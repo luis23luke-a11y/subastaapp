@@ -307,10 +307,15 @@ npm run ingesta -- --adaptador=boe --presupuesto=840
 ```
 
 Catorce minutos de tope por pasada, y lo que no da tiempo se queda en la cola
-de Postgres para la siguiente. Con una petición cada segundo y medio son unas
-550 peticiones por pasada; una vuelta completa al portal (unas 4.000) se
-reparte en poco más de una hora, y después cada pasada solo refresca lo que el
-planificador dice que toca mirar.
+de Postgres para la siguiente. Lo medido en la primera pasada real (24 de
+octubre de 2026): el descubrimiento recorre los tres estados en dos minutos y
+medio y encuentra unas 1.200 subastas de inmuebles; después caben unas 65
+fichas por pasada, porque cada una son cuatro o cinco páginas a segundo y
+medio más las escrituras en la base, que desde el runner de GitHub (Estados
+Unidos) a Neon (Fráncfort) tienen su latencia. Llenar la base la primera vez
+lleva por tanto unas 18 pasadas, cuatro o cinco horas; a partir de ahí cada
+pasada solo refresca lo que el planificador dice que toca mirar, y el
+descubrimiento de cada pasada añade solo lo nuevo.
 
 ### Por qué GitHub Actions y no Vercel Cron
 
