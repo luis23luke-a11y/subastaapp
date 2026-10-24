@@ -37,6 +37,28 @@ por qué (el Portal del BOE tiene `Disallow: /`) y las cuatro vías posibles.
 La base tiene **datos de muestra, no reales**. No los enseñes a nadie como si
 fueran subastas de verdad.
 
+### Identificadores y entorno
+
+| Qué | Valor |
+|---|---|
+| Repositorio | `github.com/luis23luke-a11y/subastaapp`, rama `main` |
+| Proyecto Vercel | `subastapp` · `prj_GC6E1g9SWAQ3ebSjXxwABEzvdJws` |
+| Equipo Vercel | `team_ec6AxUehNY0PF3nDFtt69x61` |
+| Producción | https://subastapp-gold.vercel.app |
+
+Variables ya puestas en Vercel (los tres entornos): `DATABASE_URL` y el resto del
+juego `DATABASE_*` que inyecta la integración de Neon, `URL_BASE`,
+`DB_MAX_CONEXIONES=2`, `NEXT_PUBLIC_TESELAS`, `NEXT_PUBLIC_TESELAS_ATRIBUCION`,
+`NEXT_PUBLIC_GLIFOS` y `NEXT_PUBLIC_FUENTE_MAPA`.
+
+`DB_DRIVER` no está puesta en Vercel y así debe quedarse: sin ella el valor por
+defecto es `tcp`, que es el correcto. Solo hace falta ponerla a `neon-ws` en un
+entorno que no pueda abrir el puerto 5432.
+
+`RESEND_API_KEY` no está puesta. Sin ella, `npm run acceso` imprime el enlace de
+invitación en la consola en vez de enviarlo por correo, que para desarrollo va
+mejor.
+
 ### Lo primero que hay que hacer
 
 1. **Enlazar este repositorio al proyecto de Vercel.** Está sin enlazar: los
