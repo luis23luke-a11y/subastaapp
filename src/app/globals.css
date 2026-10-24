@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --fondo: 250 250 249;
+  --panel: 255 255 255;
+  --linea: 228 228 224;
+  --texto: 28 28 26;
+  --apagado: 115 115 110;
+  --acento: 32 86 122;
+  --bueno: 22 110 78;
+  --aviso: 161 98 7;
+  --malo: 165 46 40;
+  --fuente-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fuente-cifras: ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --fondo: 24 24 23;
+    --panel: 34 34 32;
+    --linea: 56 56 53;
+    --texto: 240 240 237;
+    --apagado: 150 150 144;
+    --acento: 122 177 214;
+    --bueno: 94 190 150;
+    --aviso: 226 173 76;
+    --malo: 232 125 118;
+    color-scheme: dark;
+  }
+}
+
+:root[data-tema="oscuro"] {
+  --fondo: 24 24 23;
+  --panel: 34 34 32;
+  --linea: 56 56 53;
+  --texto: 240 240 237;
+  --apagado: 150 150 144;
+  --acento: 122 177 214;
+  --bueno: 94 190 150;
+  --aviso: 226 173 76;
+  --malo: 232 125 118;
+  color-scheme: dark;
+}
+
+body {
+  background: rgb(var(--fondo));
+  color: rgb(var(--texto));
+  font-family: var(--fuente-sans);
+}
+
+.cifra { font-variant-numeric: tabular-nums; }

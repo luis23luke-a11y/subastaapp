@@ -1,0 +1,36 @@
+{
+  "name": "subastapp",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "tipos": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "db:migrar": "node --env-file-if-exists=.env --import tsx scripts/migrar.ts",
+    "db:semilla": "node --env-file-if-exists=.env --import tsx scripts/semilla.ts",
+    "ingesta": "node --env-file-if-exists=.env --import tsx src/ingesta/ejecutar.ts",
+    "acceso": "node --env-file-if-exists=.env --import tsx scripts/enlace.ts"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.1",
+    "maplibre-gl": "4.7.1",
+    "next": "^15.5.27",
+    "pg": "8.13.1",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.5",
+    "@types/pg": "8.11.10",
+    "@types/react": "19.0.7",
+    "@types/react-dom": "19.0.3",
+    "autoprefixer": "10.4.20",
+    "postcss": "8.4.49",
+    "tailwindcss": "3.4.17",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3"
+  }
+}
