@@ -271,11 +271,14 @@ Los anuncios reales contienen datos personales de deudores y acreedores. La
 aplicación va con `robots: noindex` y sin registro abierto justamente por eso:
 la sanción no llega por rastrear, llega por publicar.
 
-Las teselas del mapa apuntan por defecto a OpenStreetMap, cuya política de uso
-**no admite tráfico de producción**, y los glifos al servidor de demostración de
-MapLibre. Cambia `NEXT_PUBLIC_TESELAS` y `NEXT_PUBLIC_GLIFOS` por MapTiler o un
-Protomaps propio antes de abrirlo a clientes. Los glifos no son opcionales: un
-estilo sin ellos no admite capas de texto y el mapa se queda en blanco.
+El fondo del mapa es el estilo Liberty de OpenFreeMap: público, sin clave, sin
+límite de visitas y con uso comercial permitido. A cambio no hay contrato ni
+garantía, porque lo mantiene una persona con donaciones. Si deja de responder,
+el mapa se queda en gris hasta poner otro estilo en `NEXT_PUBLIC_ESTILO_MAPA`:
+MapTiler de pago, o un Protomaps propio alojado en un almacenamiento barato,
+que es la opción seria cuando haya clientes de pago. Cualquier estilo que se
+ponga tiene que traer `glyphs`; sin ellos no se admite ninguna capa de texto y
+el mapa se queda en blanco.
 
 MapLibre, desde la versión 6, arranca su *worker* desde un fichero aparte cuya
 URL calcula con `import.meta.url`. Bajo webpack esa URL no lleva a ningún
