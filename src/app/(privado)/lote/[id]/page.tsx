@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Calculadora from "@/components/Calculadora";
+import CitaBOE from "@/components/CitaBOE";
 import Evidencia from "@/components/Evidencia";
 import { bienesDelLote, historicoLote, lotePorId } from "@/lib/consultas";
 import { eur, fecha, m2, pct, plazoTexto } from "@/lib/formato";
@@ -71,6 +72,7 @@ export default async function FichaLote({ params }: { params: Promise<{ id: stri
                 Ficha oficial en el origen
               </a>
             )}
+            {lote.fuente === "boe" && <CitaBOE className="mt-1 text-[11px] text-apagado" />}
           </div>
         </div>
       </header>

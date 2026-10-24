@@ -81,6 +81,13 @@ const FORMULAS: Senal[] = [
   { nombre: "formula-aceptacion",
     patron: /(?:el\s+)?(?:licitador|rematante|adjudicatario)[^.]{0,80}?acepta[^.]{0,80}?subsistencia/,
     confianza: 0 },
+  // El Servicio de Gestion de Subastas de Murcia pone en todos sus anuncios
+  // "se cancelan la carga registral que da lugar a esta subasta y todas las
+  // posteriores. Se mantendran las cargas o gravamenes anteriores o del mismo
+  // rango". Es la ley, no una certificacion: no dice si hay cargas o no.
+  { nombre: "formula-mantendran-anteriores",
+    patron: /se\s+mantendran\s+las\s+cargas\s+o\s+gravamenes\s+anteriores\s+o\s+del\s+mismo\s+rango/,
+    confianza: 0 },
 ];
 
 // --- Cargas ----------------------------------------------------------------

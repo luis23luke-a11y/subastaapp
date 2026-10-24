@@ -19,11 +19,16 @@ Fase 1 terminada y en producción. Lo que funciona de punta a punta:
 - Calculadora de coste de adquisición y margen con ITP por comunidad.
 - Cliente del Catastro probado contra el servicio real, cadena de geocodificación
   con precisión declarada, extractor de cargas con cita literal por campo.
-- 74 pruebas (`npm test`, `node --test`, sin dependencias de testing).
+- Adaptador del Portal de Subastas del BOE (`src/ingesta/adaptadores/boe.ts`),
+  que lee el portal sin sesión y despacio, probado sobre páginas reales.
+- 95 pruebas (`npm test`, `node --test`, sin dependencias de testing).
 
-Lo que **no** funciona todavía: la ingesta real. Los datos que se ven son de
-muestra, generados por `src/ingesta/adaptadores/muestra.ts`. El README explica
-por qué (el Portal del BOE tiene `Disallow: /`) y las cuatro vías posibles.
+Lo que **no** está hecho todavía: la base de producción sigue con los datos de
+muestra de `src/ingesta/adaptadores/muestra.ts`. Pasar a datos reales es
+borrar la semilla y dejar el worker corriendo desde un cron con
+`--adaptador=boe`. El README explica la base legal (la licencia de
+reutilización del BOE permite el uso comercial con cita) y lo que falta por
+conciliar (el `robots.txt` del portal).
 
 ## Despliegue actual
 
@@ -149,6 +154,6 @@ dice. Sustituir `indiceDeZona` por índices reales es un cambio de una función.
 ## Lo que falta
 
 La lista está al final del `README.md`. Por orden de lo que desbloquea más:
-el adaptador de la fuente real, conectar un modelo de verdad al revisor y medir
-su acierto contra las reglas, índices de precios reales, alertas por correo y
-Telegram, y pagos.
+poner la ingesta real del BOE en producción desde un cron, conectar un modelo
+de verdad al revisor y medir su acierto contra las reglas, índices de precios
+reales, alertas por correo y Telegram, y pagos.

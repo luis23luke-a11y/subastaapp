@@ -132,3 +132,14 @@ test("tampoco la parte una abreviatura como n.º", () => {
   const r = extraerDeTexto("La finca se encuentra ocupada por el ejecutado, finca n.º 1.234 del registro.");
   assert.ok(r.situacion.evidencia?.includes("n.º 1.234"), r.situacion.evidencia ?? "sin evidencia");
 });
+
+test("la fórmula del Servicio de Subastas de Murcia no cuenta como prueba de cargas", () => {
+  const e = extraerDeTexto(
+    "Cargas: Se cancelan la carga registral que da lugar a esta subasta y todas las posteriores. " +
+    "Se mantendrán las cargas o gravámenes anteriores o del mismo rango, y quien se adjudique el " +
+    "inmueble se subroga en la responsabilidad que garantizan. Los interesados han de comprobar qué " +
+    "cargas existen y su estado actual.",
+  );
+  assert.equal(e.cargasSubsisten.valor, null);
+  assert.ok(e.formulasDeEstilo.includes("formula-mantendran-anteriores"));
+});

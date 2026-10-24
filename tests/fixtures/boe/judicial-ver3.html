@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <title>Portal de Subastas Electr&#xF3;nicas</title>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="format-detection" content="telephone=no">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="Keywords" content="Subastas">
+    <meta name="Description" content="Portal de Subastas de la Agencia Estatal Bolet&#xED;n Oficial del Estado">
+    <!--[if lt IE 10]>
+    <link rel="stylesheet" type="text/css" href="/estilos/subastas_ie9.css" />
+    <![endif]-->
+    <!--[if lt IE 9]>
+    <link rel="stylesheet" type="text/css" href="/estilos/subastas_ie8.css" />
+    <![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="icon" href="/favicon.ico" type="image/x-icon" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png"/>
+    <link rel="stylesheet" href="/estilos/portalSubastas.css" title="comun" type="text/css"/>
+    <link rel="stylesheet" href="/estilos/form.css" title="comun" type="text/css"/>
+  </head>
+  <body>
+    <!-- Cabecera -->
+    <div id="cabecera">
+      <!-- Accesibilidad -->
+      <ul class="fuera">
+        <li><a accesskey="c" href="#contenido">Ir a contenido</a></li>
+      </ul>
+      <!-- Comienza la franja blanca con logos y enlaces a la derecha -->
+      <div id="logoInicio">
+        <span class="pc tablet" id="logoPresidenciaMovil">
+          <a href="https://www.mpr.gob.es/" title="Ir al Ministerio de la Presidencia">
+            <img src="/imagenes/logoMPRmovil.png" alt="Ministerio de la Presidencia">
+          </a>
+        </span>
+        <span id="logoPresidencia">
+          <a href="https://www.mpr.gob.es/" title="Ir al Ministerio de la Presidencia">
+            <img src="/imagenes/logoMPR.png" srcset="/imagenes/logoMPR.svg" alt="Ministerio de la Presidencia">
+          </a>
+        </span>
+        <span class="movil">
+          <a href="/" title="Ir a la p&#xE1;gina de inicio">
+            <img alt="Portal de Subastas" src="/imagenes/portal_subastas_270.png" srcset="/imagenes/portal_subastas_270.svg" />
+          </a>
+        </span>
+      </div><!-- Fin de logoInicio -->
+      <h1>
+        <a href="/" title="Ir a la p&#xE1;gina de inicio">
+          Portal de Subastas
+        </a>
+      </h1>
+      <p class="fuera">Portal de Subastas de la Agencia Estatal Bolet&#xED;n Oficial del Estado</p>
+      <span id="logoBOE">
+        <a href="https://www.boe.es" title="Ir a la p&#xE1;gina de la Agencia Estatal Bolet&#xED;n Oficial del Estado">
+          <img src="/imagenes/logo_boe.png"  alt="Agencia Estatal Bolet&#xED;n Oficial del Estado">
+        </a>
+      </span>
+    </div> <!-- #cabecera -->
+    <!-- Cuerpo -->
+    <div id="cuerpo">
+      <div id="top" class="banda-menu">
+        <div id="menu_principal" class="menu-wrapper">
+          <ul>
+            <li class="inicio pc tablet">
+              <a href="https://subastas.boe.es/index.php"><span>Inicio</span></a>
+            </li>
+            <li class="buscar">
+              <a href="https://subastas.boe.es/subastas_ava.php">
+                <span class="pc tablet">Buscar</span>
+                <span class="movil"><img alt="Buscar" src="/imagenes/logoBuscar_blanco.png" srcset="/imagenes/logoBuscar_blanco.svg"></span>
+              </a>
+            </li>
+            <li class="ayuda">
+              <a href="https://subastas.boe.es/ayuda.php">
+                <span class="pc tablet">Ayuda</span>
+                <span class="movil"><img alt="Ayuda" src="/imagenes/ayuda.png" srcset="/imagenes/ayuda.svg"></span>
+              </a>
+            </li>
+            <li  class="botonAcceso ico_acceso">
+              <a href="https://subastas.boe.es/acceso.php">
+                <span class="tablet pc">
+                  Iniciar sesi&#xF3;n<span class="luz">Pulse para acceder o registrarse como usuario en el Portal de Subastas</span>
+                </span>
+                <span class="movil"><img alt="Iniciar sesi&#xF3;n" src="/imagenes/logoAcceso.png" srcset="/imagenes/logoAcceso.svg"></span>
+              </a>
+            </li> 
+          </ul>
+        </div><!-- #menu_principal -->
+      </div><!-- .banda-menu -->
+      <p class="disclaimer">
+        <span id="fechaOficial">S&#xE1;bado, 24 de octubre de 2026</span>
+        <span id="horaOficial">21:43:10</span>
+        <span id="usoHorario" title="Hora Central Europea / Central European Time">CET</span>
+      </p>
+      <script>
+         var hoy = new Date(2026,10-1,24,21,43,10); 
+         function reloj(){
+            var hora = hoy.getHours(); 
+            var minutos = hoy.getMinutes(); 
+            var segundos = hoy.getSeconds(); 
+            if (hora<=9) hora = "0" + hora; 
+            if (minutos<=9) minutos = "0" + minutos; 
+            if (segundos<=9) segundos = "0" + segundos; 
+            var horaFinal = hora + ":" + minutos + ":" + segundos; 
+            var dia = new Array('Domingo','Lunes','Martes','Mi&#xe9;rcoles','Jueves','Viernes','S&#xe1;bado'); 
+            var mes = new Array('Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'); 
+            var anio = hoy.getFullYear(); 
+            var fecha = dia[hoy.getDay()] + ', ' + hoy.getDate() + ' de '  + mes[hoy.getMonth()] + ' de ' + anio ; 
+
+            document.getElementById('fechaOficial').innerHTML = fecha;
+            document.getElementById('horaOficial').innerHTML = horaFinal;
+
+            hoy.setSeconds(hoy.getSeconds() +1);
+            setTimeout('reloj()',1000);
+         } 
+         reloj();
+      </script>
+      <div id="contenedor">
+        <div id="contenido">
+          <h2>Subasta SUB-JA-2021-163298</h2>
+
+          <div class="caja gris aviso">
+            <p><strong>ADVERTENCIA:</strong> De acuerdo a lo establecido por la autoridad gestora, <strong>durante el plazo de ejecuci&#xF3;n de esta subasta, </strong><strong><span class="destaca">la puja m&#xE1;s alta realizada es p&#xFA;blica y existe posibilidad de pr&#xF3;rroga hasta un m&#xE1;ximo de 24 horas</span></strong>.</p>
+          </div>
+          <div id="tabs">
+            <input type="checkbox" class="desplegable" id="dropDownFiltro" value="" name="dropDownFiltro"/>
+            <label class="selected" for="dropDownFiltro" data-toggle="dropdown">Bienes</label>
+            <ul class="navlist">
+              <li>
+                <a href="./detalleSubasta.php?idSub=SUB-JA-2021-163298&amp;ver=1&amp;idBus=&amp;idLote=&amp;numPagBus=">Informaci&#xF3;n general</a>
+              </li>
+              <li>
+                <a href="./detalleSubasta.php?idSub=SUB-JA-2021-163298&amp;ver=2&amp;idBus=&amp;idLote=&amp;numPagBus=">Autoridad gestora</a>
+              </li>
+              <li>
+                <a href="./detalleSubasta.php?idSub=SUB-JA-2021-163298&amp;ver=3&amp;idBus=&amp;idLote=&amp;numPagBus=" class="current">Bienes</a>
+              </li>
+              <li>
+                <a href="./detalleSubasta.php?idSub=SUB-JA-2021-163298&amp;ver=5&amp;idBus=&amp;idLote=&amp;numPagBus=">Pujas</a>
+              </li>
+            </ul>
+          </div>
+          <div id="idBloqueDatos3">
+            <div>
+              <div class="bloque" id="idBloqueLote1">
+                <div>
+                  <div class="caja">Ref. lote. 099343. Finca registral 41461. Vivienda unifamiliar con piscina, en la Urbanizaci&#xF3;n Residencial Mar Menor Golf de Torre Pacheco (consta en el expediente que se encuentra arrendada)</div>
+                </div>
+                <div>
+                  <h3>Datos del bien subastado</h3>
+                  <div>
+                    <h4>Bien 1 - Inmueble (Vivienda)</h4>
+                    <table>
+                      <tr>
+                        <th>Descripci&#xF3;n</th>
+                        <td>(AVISO: Seg&#xFA;n decreto de 18-11-2020, el inmueble se encuentra ocupado por inquilinos en virtud de contrato de arrendamiento suscrito el 21-03-2019, que se incorpora a la documentaci&#xF3;n de la subasta, en el que se pact&#xF3; una renta mensual de 581,90 euros. No se ha declarado si tienen derecho a permanecer en el inmueble tras la adjudicaci&#xF3;n) URBANA.- PARCELA de terreno destinado a la edificaci&#xF3;n para uso residencial, identificada como parcela M9, P10 en el PLAN PARCIAL RESIDENCIAL MAR MENOR GOLF del termino municipal de Torre-Pacheco. Direcci&#xF3;n catastral: CL CEDRO 43 C.P. 30700 TORRE-PACHECO, MAR MENOR GOLF. Tiene una superficie de 210 m2. Dentro de su perimetro existe construida la siguiente edificaci&#xF3;n VIVIENDA UNIFAMILIAR AISLADA, de planta baja, modelo ISLA DEL CIERVO.  Se compone de sal&#xF3;n comedor, dos dormitorios, cocina, aseo y lavadero. Dispone igualmente de un porche posterior adem&#xE1;s de una zona de aparcamiento, bajo la p&#xE9;rgola de entrada. Sobre la vivienda se ubica una amplia terraza sol&#xE1;rium, con acceso desde la parte posterior de la vivienda. Tiene una total superficie construida de 77,90 m2.  La edificaci&#xF3;n ocupa una superficie de solar en planta de 71,50 m2.- Linda: Norte: parcela 9, Este: S.E.L. 59, Sur: parcela 11, Oeste: calle Y.- CUOTA DE PARTICIPACION.- Se le asigno un cuota de participaci&#xF3;n en los elementos y gastos comunes del Complejo Inmobiliario del que forma parte de 0,0717 %</td>
+                      </tr>
+                      <tr>
+                        <th>IDUFIR</th>
+                        <td>30030000793818</td>
+                      </tr>
+                      <tr>
+                        <th>Referencia catastral</th>
+                        <td>
+                          <a>4294810XG8749S0001UF</a>
+                        </td>
+                      </tr>
+                      <tr>
+                        <th>Direcci&#xF3;n</th>
+                        <td>c/ Cedro, 43. Urbanizaci&#xF3;n Mar Menor Village Golf</td>
+                      </tr>
+                      <tr>
+                        <th>C&#xF3;digo Postal</th>
+                        <td>30700</td>
+                      </tr>
+                      <tr>
+                        <th>Localidad</th>
+                        <td>TORRE-PACHECO</td>
+                      </tr>
+                      <tr>
+                        <th>Provincia</th>
+                        <td>Murcia</td>
+                      </tr>
+                      <tr>
+                        <th>Vivienda habitual</th>
+                        <td>No</td>
+                      </tr>
+                      <tr>
+                        <th>Situaci&#xF3;n posesoria</th>
+                        <td>No consta (Seg&#xFA;n Decreto de 18-11-2020, el inmueble se encuentra ocupado en virtud de arrendamiento suscrito el 21 de marzo de 2019. No se ha declarado si tienen derecho a permanecer en &#xE9;l tras la adjudicaci&#xF3;n)</td>
+                      </tr>
+                      <tr>
+                        <th>Visitable</th>
+                        <td>No consta (La inspecci&#xF3;n del inmueble solo puede ser autorizada por quien conste como poseedor u ocupante actual del inmueble)</td>
+                      </tr>
+                      <tr>
+                        <th>Cargas</th>
+                        <td>Se cancelan la carga registral que da lugar a esta subasta y todas las posteriores. Se mantendr&#xE1;n las cargas o grav&#xE1;menes anteriores o del mismo rango, y quien se adjudique el inmueble se subroga en la responsabilidad que garantizan. Los interesados han de comprobar qu&#xE9; cargas existen y su estado actual. Adem&#xE1;s del precio ofrecido y esas posibles cargas, se han de abonar otros gastos e impuestos, por lo que antes de participar es conveniente consultar con expertos.</td>
+                      </tr>
+                      <tr>
+                        <th>Inscripci&#xF3;n registral</th>
+                        <td>Finca registral 41461. Registro de la Propiedad de Torre Pacheco</td>
+                      </tr>
+                      <tr>
+                        <th>Informaci&#xF3;n adicional</th>
+                        <td>ACEPTACION DE LAS CONDICIONES LA SUBASTA. Solo los usuarios registrados en este portal pueden acceder al edicto y a toda la documentaci&#xF3;n incorporada a la subasta. Su lectura y comprensi&#xF3;n es obligada ya que quien participa como postor acepta las condiciones fijadas en el edicto y por la Autoridad Gestora. INICIO AUTOMATICO DE LOS PLAZOS PARA MEJORAR EL PRECIO FINAL. La posibilidad de mejorar el precio tras la subasta, prevista en el art. 670 LEC cuando no alcance unos porcentajes m&#xED;nimos, comenzar&#xE1; de modo autom&#xE1;tico tras la subasta y sin necesidad de notificaci&#xF3;n expresa. Los demandados solo pueden mejorar en los primeros diez d&#xED;as h&#xE1;biles desde el fin de la subasta y el ejecutante en los cinco siguientes. REPRESENTACION DE TERCEROS. Si el postor ha actuado en representaci&#xF3;n de otros, o conjuntamente con ellos, debe cumplir lo indicado por esta autoridad gestora en la informaci&#xF3;n adjunta al edicto. DEVOLUCION DE DEPOSITOS A POSTORES CON RESERVA DE PUJA. Se controlar&#xE1;n especialmente, y se ordenar&#xE1; su devoluci&#xF3;n en cuanto se pague el precio o se compruebe que el mejor postor ha sido el ejecutante. COMPROBACION Y ERRORES EN LA DOCUMENTACION. La informaci&#xF3;n publicada puede ser modificada mediante la incorporaci&#xF3;n de nueva documentaci&#xF3;n, por lo que tiene que comprobarse antes de realizar la primera puja. Si observa que la subasta s&#xF3;lo incorpora el edicto de la subasta o hay archivos que no concuerdan con ella, av&#xED;senos para subsanar el problema a la mayor brevedad. </td>
+                      </tr>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="bloqueBotones">
+            <a class="boton" href="/index.php">Volver a la p&#xE1;gina de inicio</a>
+          </div>
+        </div> <!-- /contenido -->
+      </div> <!-- /contenedor -->
+    </div> <!-- #cuerpo -->
+    <div id="pie">
+      <div id="menuPie">
+        <div class="franjaMenu">
+          <ul>
+            <li><a href="https://subastas.boe.es/textoPolitica.php" target="_blank" title="Abre nueva ventana">Acerca del Portal</a></li>
+          </ul>
+        </div> <!-- .franjaMenu -->
+      </div> <!-- #menuPie -->
+      <div class="franja-pie">
+        <p>Agencia Estatal Bolet&#xED;n Oficial del Estado</p>
+        <p><abbr title="Avenida">Avda.</abbr> de Manoteras, 54 - 28050 Madrid</p>
+      </div>
+    </div> <!-- #pie -->
+    <script src="/lib/js/desplegable.js"></script>
+  </body>
+</html>

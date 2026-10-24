@@ -1,6 +1,7 @@
 // CLI del worker de ingesta.
 //
 //   npm run ingesta                              una pasada con el adaptador de muestra
+//   npm run ingesta -- --adaptador=boe           una pasada contra el Portal de Subastas del BOE
 //   npm run ingesta -- --presupuesto=600         tope de 10 minutos
 //   npm run ingesta -- --sin-descubrir           solo atiende lo que ya hay en cola
 //   npm run ingesta -- --cola                    solo muestra el estado de la cola
@@ -9,6 +10,7 @@
 // de tiempo, lo que no le da tiempo a hacer se queda en la cola para la
 // siguiente, y los trabajos a medias de un worker muerto se rescatan solos.
 
+import { AdaptadorBOE } from "@/ingesta/adaptadores/boe";
 import { AdaptadorMuestra } from "@/ingesta/adaptadores/muestra";
 import { ejecutarWorker, resumenCola } from "@/ingesta/worker";
 import { pool } from "@/lib/db";
@@ -24,9 +26,11 @@ function elegirAdaptador(nombre: string, cuantas: number): Adaptador {
   switch (nombre) {
     case "muestra":
       return new AdaptadorMuestra(cuantas);
+    case "boe":
+      return new AdaptadorBOE();
     default:
       throw new Error(
-        `Adaptador desconocido: ${nombre}. Disponibles: muestra.\n` +
+        `Adaptador desconocido: ${nombre}. Disponibles: muestra, boe.\n` +
         `Los adaptadores de fuentes reales se añaden en src/ingesta/adaptadores/ ` +
         `implementando la interfaz de src/ingesta/adaptador.ts.`,
       );

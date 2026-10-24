@@ -1,3 +1,4 @@
+import CitaBOE from "@/components/CitaBOE";
 import Filtros from "@/components/Filtros";
 import Mapa from "@/components/Mapa";
 import TarjetaLote from "@/components/TarjetaLote";
@@ -95,6 +96,10 @@ export default async function Buscar({
               </li>
             ))}
           </ul>
+        )}
+
+        {resultado.filas.some((l) => l.fuente === "boe") && (
+          <CitaBOE className="text-center text-[11px] text-apagado" />
         )}
 
         {resultado.paginas > 1 && (
