@@ -1,4 +1,12 @@
-import { Pool, types } from "pg";
+import { Pool as PoolTcp, types } from "pg";
+import { Pool as PoolNeon, neonConfig } from "@neondatabase/serverless";
+import ws from "ws";
+
+// Neon admite dos transportes: TCP normal al 5432 y WebSocket sobre 443. El
+// segundo hace falta en cualquier entorno que no pueda abrir puertos sueltos,
+// que son mas de los que uno espera: contenedores de CI, sandboxes y algunas
+// redes corporativas. Se elige con DB_DRIVER=neon-ws.
+const CONTROLADOR = process.env.DB_DRIVER ?? "tcp";
 
 // node-postgres devuelve numeric y bigint como texto para no perder precision.
 // Aqui los importes caben de sobra en un double y los ids en un Number, asi que
@@ -6,12 +14,14 @@ import { Pool, types } from "pg";
 types.setTypeParser(1700, (v) => (v === null ? null : Number.parseFloat(v))); // numeric
 types.setTypeParser(20, (v) => (v === null ? null : Number.parseInt(v, 10))); // int8
 
+type PoolCompatible = PoolTcp;
+
 declare global {
   // eslint-disable-next-line no-var
-  var __pool: Pool | undefined;
+  var __pool: PoolCompatible | undefined;
 }
 
-function crear(): Pool {
+function crear(): PoolCompatible {
   const cadena = process.env.DATABASE_URL;
   if (!cadena) throw new Error("Falta DATABASE_URL. Copia .env.example a .env.");
   // En serverless cada instancia abre su propia pool y las instancias se
@@ -19,7 +29,7 @@ function crear(): Pool {
   // del servidor antes de que te des cuenta. Pocas conexiones por instancia y,
   // en produccion, una cadena de conexion con pooler (pgbouncer) delante.
   const enServerless = Boolean(process.env.VERCEL);
-  return new Pool({
+  const opciones = {
     connectionString: cadena,
     max: Number.parseInt(process.env.DB_MAX_CONEXIONES ?? (enServerless ? "2" : "8"), 10),
     idleTimeoutMillis: enServerless ? 10_000 : 30_000,
@@ -28,11 +38,17 @@ function crear(): Pool {
     ssl: cadena.includes("localhost") || cadena.includes("127.0.0.1") || cadena.includes("/tmp")
       ? undefined
       : { rejectUnauthorized: false },
-  });
+  };
+
+  if (CONTROLADOR === "neon-ws") {
+    neonConfig.webSocketConstructor = ws;
+    return new PoolNeon(opciones) as unknown as PoolCompatible;
+  }
+  return new PoolTcp(opciones);
 }
 
 /** Una sola pool por proceso, incluso con el recarga en caliente de Next. */
-export const pool: Pool = global.__pool ?? crear();
+export const pool: PoolCompatible = global.__pool ?? crear();
 if (process.env.NODE_ENV !== "production") global.__pool = pool;
 
 export async function consultar<T>(sql: string, valores: unknown[] = []): Promise<T[]> {

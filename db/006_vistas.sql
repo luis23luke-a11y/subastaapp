@@ -1,5 +1,10 @@
 -- ---------------------------------------------------------------------------
--- 002  Vista de busqueda
+-- 006  Vista de busqueda
+--
+-- Va la ultima a proposito: la vista toca columnas que anaden migraciones
+-- posteriores a la del esquema base. Numerada antes, una base limpia fallaba
+-- al crearla y una ya migrada no, que es la peor clase de error: el que solo
+-- aparece cuando despliegas.
 --
 -- Aplana lote + subasta + bien principal + enriquecido en la fila que consume
 -- el buscador, y calcula ahi los dos campos que el usuario filtra de verdad:

@@ -15,7 +15,17 @@ Lo que ya funciona, probado de punta a punta contra Postgres 16 con PostGIS 3.4:
 
 ## Arrancar en local
 
-Necesitas Node 22 y un Postgres **con la extensión PostGIS**.
+Necesitas Node 22 y un Postgres **con la extensión PostGIS**. Probado contra
+Postgres 16 con PostGIS 3.4 en local y contra Neon con PostGIS 3.6.
+
+La vista de búsqueda es la migración **006 a propósito**: toca columnas que
+añaden migraciones posteriores a la del esquema base, y numerada antes fallaba
+en una base limpia pero no en una ya migrada. Es la peor clase de error, el que
+solo aparece cuando despliegas.
+
+Si tu entorno no puede abrir el puerto 5432 —pasa en más sitios de los que uno
+espera: contenedores de CI, sandboxes, algunas redes corporativas— pon
+`DB_DRIVER=neon-ws` y la conexión va por WebSocket sobre el 443.
 
 ```bash
 cp .env.example .env          # y rellena DATABASE_URL
@@ -40,6 +50,7 @@ entorno, el enlace se envía por correo en vez de imprimirse.
 | `npm test` | Pruebas de costes y filtros |
 | `npm run tipos` | `tsc --noEmit` |
 | `npm run db:migrar` | Aplica las migraciones de `db/` |
+| `npm run db:estado` | Comprueba PostGIS y cuenta las filas de cada tabla |
 | `npm run db:semilla` | Da de alta un invitado y siembra datos de muestra |
 | `npm run acceso` | Genera un enlace de acceso |
 | `npm run ingesta` | Una pasada del worker de ingesta |
@@ -49,7 +60,6 @@ entorno, el enlace se envía por correo en vez de imprimirse.
 
 ```
 db/001_esquema.sql        Tablas, tipos, índices
-db/002_vistas.sql         v_lote_busqueda: lo que consume el buscador
 db/003_ingesta.sql        Cola de trabajo, contenido crudo, ejecuciones
 src/lib/costes.ts         Motor de coste y margen (puro, con pruebas)
 src/lib/filtros.ts        Filtro -> SQL parametrizado. Nada se interpola
