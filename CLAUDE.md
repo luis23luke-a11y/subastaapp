@@ -59,15 +59,25 @@ entorno que no pueda abrir el puerto 5432.
 invitación en la consola en vez de enviarlo por correo, que para desarrollo va
 mejor.
 
-### Lo primero que hay que hacer
+### Estado del traspaso
 
-1. **Enlazar este repositorio al proyecto de Vercel.** Está sin enlazar: los
-   despliegues se hicieron subiendo los ficheros a mano desde una sesión de chat,
-   y solo los 28 que importa la web (el worker, el cliente del Catastro y el
-   extractor no están desplegados, porque la web no los importa). Con
-   `vercel link` y el repo conectado, cada push despliega solo.
-2. **Comprobar que todo sigue verde en local:** `npm install`, `npm test`,
-   `npm run tipos`, `npm run db:estado`.
+Cerrado el 24 de octubre de 2026:
+
+1. **Repositorio enlazado a Vercel.** La carpeta está enlazada con `vercel
+   link` (deja `.vercel/project.json`, que git ignora) y el repo de GitHub
+   conectado al proyecto, así que cada push a `main` despliega solo. Hasta
+   entonces los despliegues se habían hecho subiendo los ficheros a mano desde
+   una sesión de chat, y solo los 28 que importa la web.
+2. **Todo verde en local** con Node 24: `npm test` (74 pruebas), `npm run
+   tipos`, `npm run build` y `npm run db:estado` contra Neon.
+
+Para tener la base en local sin copiar nada a mano:
+
+```bash
+npx vercel env pull .env --environment=development
+```
+
+y añade `DB_DRIVER=tcp` al `.env` resultante.
 
 ## Cómo trabajar en este repo
 
