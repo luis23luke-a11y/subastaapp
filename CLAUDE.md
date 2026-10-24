@@ -23,12 +23,14 @@ Fase 1 terminada y en producción. Lo que funciona de punta a punta:
   que lee el portal sin sesión y despacio, probado sobre páginas reales.
 - 95 pruebas (`npm test`, `node --test`, sin dependencias de testing).
 
-Lo que **no** está hecho todavía: la base de producción sigue con los datos de
-muestra de `src/ingesta/adaptadores/muestra.ts`. Pasar a datos reales es
-borrar la semilla y dejar el worker corriendo desde un cron con
-`--adaptador=boe`. El README explica la base legal (la licencia de
-reutilización del BOE permite el uso comercial con cita) y lo que falta por
-conciliar (el `robots.txt` del portal).
+- Ingesta real en producción desde un cron de GitHub Actions
+  (`.github/workflows/ingesta-boe.yml`, cada 15 minutos, tope de 14 minutos
+  por pasada). La vista de búsqueda esconde los datos de muestra en cuanto hay
+  una subasta real; las filas de muestra siguen en la base.
+
+El README explica la base legal (la licencia de reutilización del BOE permite
+el uso comercial con cita) y lo que falta por conciliar (el `robots.txt` del
+portal), y en «La ingesta en producción» cómo se configura y se vigila el cron.
 
 ## Despliegue actual
 
@@ -37,10 +39,12 @@ conciliar (el `robots.txt` del portal).
 | Producción | https://subastapp-gold.vercel.app |
 | Proyecto Vercel | `subastapp` (framework Next.js, Node 24) |
 | Base de datos | Neon, `eu-central-1`, PostGIS 3.6, migrada y sembrada |
-| Datos sembrados | 240 subastas / lotes / bienes de muestra |
+| Datos sembrados | 240 subastas / lotes / bienes de muestra, ya ocultos por la vista |
+| Cron de ingesta | GitHub Actions, workflow «Ingesta BOE», cada 15 minutos |
 
-La base tiene **datos de muestra, no reales**. No los enseñes a nadie como si
-fueran subastas de verdad.
+La base conserva los **240 registros de muestra** (fuente `muestra`), pero el
+buscador no los enseña desde que hay subastas reales. Lo real viene del
+Portal de Subastas del BOE, con la cita que exige su licencia.
 
 ### Identificadores y entorno
 
@@ -64,6 +68,11 @@ entorno que no pueda abrir el puerto 5432.
 `RESEND_API_KEY` no está puesta. Sin ella, `npm run acceso` imprime el enlace de
 invitación en la consola en vez de enviarlo por correo, que para desarrollo va
 mejor.
+
+El cron de ingesta no corre en Vercel sino en GitHub Actions, y lee sus
+variables de GitHub → Settings → Secrets and variables → Actions:
+`DATABASE_URL` como secreto y `BOE_CONTACTO` (el correo del `User-Agent`)
+como variable. El README dice cómo ponerlas con `gh`.
 
 ### Estado del traspaso
 
@@ -116,7 +125,8 @@ recalcular, sin tocar el origen.
 
 **Las migraciones son ficheros numerados en `db/` y son idempotentes.** Para
 cambiar el esquema se añade una migración nueva; no se edita una existente, ni se
-cambia su número. La vista va la última a propósito.
+cambia su número. La vista va la última a propósito y es la excepción: se
+recrea entera cada vez, así que cuando gane una columna se edita `006`.
 
 ### Variables de entorno
 
@@ -154,6 +164,5 @@ dice. Sustituir `indiceDeZona` por índices reales es un cambio de una función.
 ## Lo que falta
 
 La lista está al final del `README.md`. Por orden de lo que desbloquea más:
-poner la ingesta real del BOE en producción desde un cron, conectar un modelo
-de verdad al revisor y medir su acierto contra las reglas, índices de precios
-reales, alertas por correo y Telegram, y pagos.
+conectar un modelo de verdad al revisor y medir su acierto contra las reglas,
+índices de precios reales, alertas por correo y Telegram, y pagos.
