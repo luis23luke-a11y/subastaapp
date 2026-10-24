@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { type GeoJSONSource, type Map as MapaGL } from "maplibre-gl";
+import { Map as MapaGL, NavigationControl, Popup, LngLatBounds, setWorkerUrl, type GeoJSONSource } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 export interface Punto {
@@ -22,6 +22,12 @@ const ATRIBUCION = process.env.NEXT_PUBLIC_TESELAS_ATRIBUCION ?? "&copy; OpenStr
 const GLIFOS = process.env.NEXT_PUBLIC_GLIFOS
   ?? "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
 const FUENTE_MAPA = process.env.NEXT_PUBLIC_FUENTE_MAPA ?? "Noto Sans Regular";
+
+// MapLibre 6 arranca su worker desde un fichero aparte y calcula la URL con
+// import.meta.url, que bajo webpack no lleva a ningun sitio: sin esto el mapa
+// pinta las teselas pero ningun punto. scripts/worker-mapa.ts copia el fichero
+// a public/mapa/ antes de arrancar y de construir.
+setWorkerUrl("/mapa/maplibre-gl-worker.mjs");
 
 const EUR = new Intl.NumberFormat("es-ES", {
   style: "currency", currency: "EUR", maximumFractionDigits: 0, notation: "compact",
@@ -51,14 +57,14 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
   useEffect(() => {
     if (!contenedor.current || mapa.current) return;
 
-    const m = new maplibregl.Map({
+    const m = new MapaGL({
       container: contenedor.current,
       style: estilo,
       center: [-3.7, 40.2],
       zoom: 4.6,
       attributionControl: { compact: true },
     });
-    m.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+    m.addControl(new NavigationControl({ showCompass: false }), "top-right");
     mapa.current = m;
 
     m.on("load", () => {
@@ -111,7 +117,7 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
         const props = rasgo.properties as Record<string, unknown>;
         const coords = (rasgo.geometry as GeoJSON.Point).coordinates as [number, number];
         const precio = props.valor_subasta ? EUR.format(Number(props.valor_subasta)) : "sin precio";
-        new maplibregl.Popup({ offset: 10, closeButton: false })
+        new Popup({ offset: 10, closeButton: false })
           .setLngLat(coords)
           .setHTML(
             `<div style="font:13px/1.4 system-ui">
@@ -167,7 +173,7 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
       if (puntos.length > 0 && !bboxActual) {
         const limites = puntos.reduce(
           (b, p) => b.extend([p.lon, p.lat]),
-          new maplibregl.LngLatBounds([puntos[0]!.lon, puntos[0]!.lat], [puntos[0]!.lon, puntos[0]!.lat]),
+          new LngLatBounds([puntos[0]!.lon, puntos[0]!.lat], [puntos[0]!.lon, puntos[0]!.lat]),
         );
         m.fitBounds(limites, { padding: 40, maxZoom: 13, duration: 0 });
       }
