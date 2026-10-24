@@ -276,3 +276,10 @@ Las teselas del mapa apuntan por defecto a OpenStreetMap, cuya política de uso
 MapLibre. Cambia `NEXT_PUBLIC_TESELAS` y `NEXT_PUBLIC_GLIFOS` por MapTiler o un
 Protomaps propio antes de abrirlo a clientes. Los glifos no son opcionales: un
 estilo sin ellos no admite capas de texto y el mapa se queda en blanco.
+
+MapLibre, desde la versión 6, arranca su *worker* desde un fichero aparte cuya
+URL calcula con `import.meta.url`. Bajo webpack esa URL no lleva a ningún
+sitio: el mapa pinta las teselas pero ni un solo punto, y la consola dice
+«Worker failed to load». Por eso `scripts/worker-mapa.ts` copia el fichero a
+`public/mapa/` antes de `dev` y de `build`, y `Mapa.tsx` se lo indica con
+`setWorkerUrl`. Esa copia no va en git.
