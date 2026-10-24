@@ -11,7 +11,8 @@ Lo que ya funciona, probado de punta a punta contra Postgres 16 con PostGIS 3.4:
 - Buscador con filtros, mapa con agrupación y ficha de lote.
 - Calculadora de coste de adquisición y margen, con ITP por comunidad.
 - Adaptador de ingesta enchufable y datos de muestra con repartos reales.
-- 19 pruebas del motor de costes y del parseo de filtros.
+- 74 pruebas: costes, filtros, planificador, extracción de cargas, importes,
+  direcciones, valoración y validación del revisor.
 
 ## Arrancar en local
 
@@ -47,7 +48,7 @@ entorno, el enlace se envía por correo en vez de imprimirse.
 | Comando | Qué hace |
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
-| `npm test` | Pruebas de costes y filtros |
+| `npm test` | Las 74 pruebas (`node --test`, sin dependencias) |
 | `npm run tipos` | `tsc --noEmit` |
 | `npm run db:migrar` | Aplica las migraciones de `db/` |
 | `npm run db:estado` | Comprueba PostGIS y cuenta las filas de cada tabla |
