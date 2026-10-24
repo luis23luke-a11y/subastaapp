@@ -29,6 +29,13 @@ on:
         description: Tope de la pasada, en segundos
         default: "840"
         required: false
+  # Para probar un cambio del workflow antes de fusionarlo: un push que toque
+  # este fichero en una rama que no sea main lanza una pasada real. Es la unica
+  # forma de ejecutarlo desde una rama, porque "Run workflow" y gh workflow run
+  # solo ven los workflows que ya existen en main.
+  push:
+    branches-ignore: [main]
+    paths: [".github/workflows/ingesta-boe.yml"]
 
 # Dos pasadas a la vez no se pisarian (la toma de trabajos usa "for update skip
 # locked"), pero doblarian el ritmo de peticiones al portal, que es justo lo que

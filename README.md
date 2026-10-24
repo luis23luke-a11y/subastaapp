@@ -336,11 +336,13 @@ así que suele ser menos), lo que roza el cupo. Si GitHub avisa de que se
 agota, cambiar el `cron` a cada 30 minutos lo deja en 700.
 
 Tres cosas de GitHub que conviene saber. Los `schedule` **solo se disparan en
-la rama por defecto** (`main`): en una rama de trabajo el workflow existe pero
-no corre solo, hay que lanzarlo a mano. GitHub puede **retrasar** un cron unos
-minutos cuando hay cola; da igual, la siguiente pasada recoge lo pendiente. Y
-si el repositorio pasa **60 días sin actividad**, GitHub desactiva los
-`schedule` y avisa por correo; un push cualquiera los vuelve a activar.
+la rama por defecto** (`main`), y «Run workflow» solo aparece para workflows
+que ya existen en `main`; por eso el workflow también se lanza con un `push`
+que toque su propio fichero en cualquier otra rama, que es la forma de probar
+un cambio antes de fusionarlo. GitHub puede **retrasar** un cron unos minutos
+cuando hay cola; da igual, la siguiente pasada recoge lo pendiente. Y si el
+repositorio pasa **60 días sin actividad**, GitHub desactiva los `schedule` y
+avisa por correo; un push cualquiera los vuelve a activar.
 
 El bloque `concurrency` del workflow hace que, si una pasada se alarga, la
 siguiente espere en vez de arrancar en paralelo. Dos workers no se pisarían
@@ -378,10 +380,12 @@ exclusivo sobre ella 96 veces al día sin motivo.
 
 ```bash
 gh workflow run ingesta-boe.yml                  # una pasada ahora, en main
-gh workflow run ingesta-boe.yml --ref mi-rama    # o en una rama de trabajo
 gh run list --workflow=ingesta-boe.yml           # las últimas pasadas
 gh run view --log                                # el log de la última
 ```
+
+En una rama de trabajo, en cambio, se lanza tocando el fichero del workflow y
+haciendo push (ver arriba).
 
 También desde la web: pestaña **Actions → Ingesta BOE → Run workflow**. Y
 desde el repo, `npm run db:estado` enseña las subastas por fuente, cuántos
