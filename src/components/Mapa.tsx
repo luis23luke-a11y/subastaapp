@@ -14,13 +14,16 @@ export interface Punto {
   precision_geo: string | null;
 }
 
-const TESELAS = process.env.NEXT_PUBLIC_TESELAS ?? "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const ATRIBUCION = process.env.NEXT_PUBLIC_TESELAS_ATRIBUCION ?? "&copy; OpenStreetMap";
-// Un estilo sin "glyphs" no admite ninguna capa de texto: MapLibre lanza un
-// error de validacion y el mapa entero se queda en blanco. Hace falta aunque
-// las teselas sean raster.
-const GLIFOS = process.env.NEXT_PUBLIC_GLIFOS
-  ?? "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf";
+// Fondo del mapa: un estilo vectorial completo (teselas, letras e iconos) de
+// OpenFreeMap, servicio publico sin clave ni limite de visitas que admite uso
+// comercial. Cambiar de proveedor (MapTiler, un Protomaps propio) es poner
+// otra URL de estilo en esta variable; el estilo tiene que traer "glyphs",
+// porque sin ellos no se admite ninguna capa de texto y el mapa entero se
+// queda en blanco con un error de validacion.
+const ESTILO_MAPA = process.env.NEXT_PUBLIC_ESTILO_MAPA
+  ?? "https://tiles.openfreemap.org/styles/liberty";
+// Las etiquetas de los grupos necesitan una fuente que exista en los glifos
+// del estilo. Liberty trae Noto Sans en regular, cursiva y negrita.
 const FUENTE_MAPA = process.env.NEXT_PUBLIC_FUENTE_MAPA ?? "Noto Sans Regular";
 
 // MapLibre 6 arranca su worker desde un fichero aparte y calcula la URL con
@@ -33,22 +36,6 @@ const EUR = new Intl.NumberFormat("es-ES", {
   style: "currency", currency: "EUR", maximumFractionDigits: 0, notation: "compact",
 });
 
-/** Estilo raster minimo. En produccion hay que cambiar las teselas: la
- *  politica de uso de OpenStreetMap no admite trafico de produccion. */
-const estilo = {
-  version: 8 as const,
-  glyphs: GLIFOS,
-  sources: {
-    base: {
-      type: "raster" as const,
-      tiles: [TESELAS],
-      tileSize: 256,
-      attribution: ATRIBUCION,
-    },
-  },
-  layers: [{ id: "base", type: "raster" as const, source: "base" }],
-};
-
 export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActual?: string }) {
   const contenedor = useRef<HTMLDivElement>(null);
   const mapa = useRef<MapaGL | null>(null);
@@ -59,7 +46,7 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
 
     const m = new MapaGL({
       container: contenedor.current,
-      style: estilo,
+      style: ESTILO_MAPA,
       center: [-3.7, 40.2],
       zoom: 4.6,
       attributionControl: { compact: true },

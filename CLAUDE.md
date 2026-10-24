@@ -47,9 +47,10 @@ fueran subastas de verdad.
 | Producción | https://subastapp-gold.vercel.app |
 
 Variables ya puestas en Vercel (los tres entornos): `DATABASE_URL` y el resto del
-juego `DATABASE_*` que inyecta la integración de Neon, `URL_BASE`,
-`DB_MAX_CONEXIONES=2`, `NEXT_PUBLIC_TESELAS`, `NEXT_PUBLIC_TESELAS_ATRIBUCION`,
-`NEXT_PUBLIC_GLIFOS` y `NEXT_PUBLIC_FUENTE_MAPA`.
+juego `DATABASE_*` que inyecta la integración de Neon, `URL_BASE` y
+`DB_MAX_CONEXIONES=2`. El fondo del mapa no necesita variable: sin
+`NEXT_PUBLIC_ESTILO_MAPA` se usa el estilo Liberty de OpenFreeMap, y
+`NEXT_PUBLIC_FUENTE_MAPA` vale `Noto Sans Regular` por defecto.
 
 `DB_DRIVER` no está puesta en Vercel y así debe quedarse: sin ella el valor por
 defecto es `tcp`, que es el correcto. Solo hace falta ponerla a `neon-ws` en un
@@ -124,12 +125,14 @@ WebSocket sobre el 443; en una máquina normal estorba.
 
 ## Avisos que no son opcionales
 
-**Las teselas del mapa** apuntan por defecto a OpenStreetMap, cuya política de
-uso no admite tráfico de producción, y los glifos al servidor de demostración de
-MapLibre. Hay que cambiar `NEXT_PUBLIC_TESELAS` y `NEXT_PUBLIC_GLIFOS` por
-MapTiler o un Protomaps propio antes de abrir esto a clientes. Los glifos no son
-opcionales: un estilo sin ellos no admite capas de texto y MapLibre deja el mapa
-en blanco con un error de validación.
+**El fondo del mapa** viene de OpenFreeMap, un servicio público sin clave ni
+límite de visitas que admite uso comercial, pero sin contrato ni garantía: lo
+mantiene una persona con donaciones. Si un día deja de responder, el mapa se
+queda en gris hasta cambiar `NEXT_PUBLIC_ESTILO_MAPA` por otro estilo
+(MapTiler de pago, o un Protomaps propio, que es la opción seria cuando haya
+clientes de pago). El estilo que se ponga tiene que traer `glyphs`: sin ellos
+no se admite ninguna capa de texto y MapLibre deja el mapa en blanco con un
+error de validación.
 
 **Los anuncios reales llevan datos personales** de deudores y acreedores. La app
 va con `robots: noindex` y sin registro abierto justamente por eso. La sanción no
