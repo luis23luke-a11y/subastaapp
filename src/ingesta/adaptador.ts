@@ -1,11 +1,10 @@
 // ---------------------------------------------------------------------------
 // Interfaz del adaptador de ingesta.
 //
-// El origen de los datos esta sin decidir: el robots.txt del Portal de
-// Subastas prohibe el rastreo, y las vias abiertas son la autorizacion de la
-// Agencia Estatal BOE, el canal de alertas del propio portal o un proveedor
-// intermediario. Por eso la fuente se enchufa aqui y nada mas de la aplicacion
-// la conoce: cambiarla es escribir un fichero en adaptadores/ y nada mas.
+// La fuente se enchufa aqui y nada mas de la aplicacion la conoce: cambiarla
+// es escribir un fichero en adaptadores/. Hay dos: muestra.ts genera datos
+// sinteticos, y boe.ts lee el Portal de Subastas del BOE sin sesion y despacio
+// (la base legal y sus limites estan en el README).
 // ---------------------------------------------------------------------------
 
 import type { Estado, PrecisionGeo, Situacion, TipoBien, TipoSubasta } from "@/lib/tipos";

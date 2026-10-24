@@ -13,6 +13,7 @@
     "db:migrar": "node --env-file-if-exists=.env --import tsx scripts/migrar.ts",
     "db:semilla": "node --env-file-if-exists=.env --import tsx scripts/semilla.ts",
     "ingesta": "node --env-file-if-exists=.env --import tsx src/ingesta/ejecutar.ts",
+    "boe:seco": "node --env-file-if-exists=.env --import tsx scripts/boe-seco.ts",
     "acceso": "node --env-file-if-exists=.env --import tsx scripts/enlace.ts",
     "db:estado": "node --env-file-if-exists=.env --import tsx scripts/comprobar.ts"
   },

@@ -1,8 +1,8 @@
 # Subastas — esqueleto del buscador
 
-Buscador privado de subastas de inmuebles. Esta es la **fase 1**: todo lo que no
-depende de la fuente de datos. La ingesta real está pendiente de decidir (ver
-abajo) y se enchufa escribiendo un fichero.
+Buscador privado de subastas de inmuebles. La **fase 1** cubre todo lo que no
+depende de la fuente de datos; la **fase 2** empieza con el adaptador del
+Portal de Subastas del BOE, que lee el portal despacio y sin sesión (ver abajo).
 
 Lo que ya funciona, probado de punta a punta contra Postgres 16 con PostGIS 3.4:
 
@@ -10,9 +10,10 @@ Lo que ya funciona, probado de punta a punta contra Postgres 16 con PostGIS 3.4:
 - Acceso por invitación con enlace de un solo uso. Sin registro abierto.
 - Buscador con filtros, mapa con agrupación y ficha de lote.
 - Calculadora de coste de adquisición y margen, con ITP por comunidad.
-- Adaptador de ingesta enchufable y datos de muestra con repartos reales.
-- 74 pruebas: costes, filtros, planificador, extracción de cargas, importes,
-  direcciones, valoración y validación del revisor.
+- Adaptador de ingesta enchufable, con uno de muestra y uno real para el
+  Portal de Subastas del BOE, probado sobre páginas reales guardadas.
+- 95 pruebas: costes, filtros, planificador, extracción de cargas, importes,
+  direcciones, valoración, validación del revisor y el adaptador del BOE.
 
 ## Arrancar en local
 
@@ -56,6 +57,8 @@ entorno, el enlace se envía por correo en vez de imprimirse.
 | `npm run acceso` | Genera un enlace de acceso |
 | `npm run ingesta` | Una pasada del worker de ingesta |
 | `npm run ingesta -- --cola` | Estado de la cola de trabajo |
+| `npm run ingesta -- --adaptador=boe` | Una pasada del worker contra el Portal de Subastas del BOE |
+| `npm run boe:seco` | Lee unas fichas del portal y enseña lo que saca, sin tocar la base |
 
 ## Cómo está montado
 
@@ -67,6 +70,8 @@ src/lib/filtros.ts        Filtro -> SQL parametrizado. Nada se interpola
 src/lib/consultas.ts      Las consultas del buscador y de la ficha
 src/lib/auth.ts           Lista blanca, enlaces de un solo uso, sesiones
 src/ingesta/adaptador.ts  La interfaz que implementa cada fuente
+src/ingesta/adaptadores/boe.ts  El Portal de Subastas del BOE, leído sin sesión
+src/datos/provincias.ts   Provincia -> comunidad autónoma, para el ITP
 src/ingesta/worker.ts     Descubrimiento, detalle y refresco
 src/ingesta/planificador.ts  Cada cuánto mirar cada cosa (puro, con pruebas)
 src/enriquecimiento/      Catastro, geocodificación, valoración y extracción
@@ -224,36 +229,76 @@ El revisor con modelo tiene su interfaz, su validación y sus pruebas con un
 doble, pero **no se ha ejecutado contra un modelo real** porque no había clave
 de API. Enchufa un `ClienteModelo` y pruébalo antes de confiar en esa capa.
 
-## La ingesta está pendiente
+## La ingesta: el Portal de Subastas del BOE
 
-El Portal de Subastas del BOE tiene `Disallow: /` para todos los agentes y no
-hay API ni conjunto de datos oficial. El aviso legal del BOE sí autoriza la
-reutilización comercial de sus documentos, pero eso es permiso de uso, no de
-acceso automático: son cosas distintas y nadie las ha conciliado por escrito.
+Todas las subastas judiciales, notariales y de Hacienda se publican en un solo
+sitio, subastas.boe.es. No hay API ni descarga: la API de datos abiertos del
+BOE cubre legislación y sumarios, y el fichero abierto del Ministerio de
+Justicia (`Subastas_Judiciales.csv`) no trae provincia, dirección ni
+identificador, así que solo sirve para estadística.
 
-El fichero abierto `Subastas_Judiciales.csv` del Ministerio de Justicia (80.384
-subastas desde 2021) no sirve para el buscador: no trae provincia, ni dirección,
-ni identificador, ni precio de adjudicación. Sirve para estadísticas de mercado
-y para nada más.
+**La base legal.** El aviso legal del BOE, con la licencia aprobada por
+resolución de 27 de junio de 2024, autoriza la reutilización de sus documentos
+con fines comerciales, incluida «la extracción, reordenación y combinación de
+la información» para crear productos de valor añadido. A cambio pide la cita
+«Basado en datos de la Agencia Estatal Boletín Oficial del Estado» con enlace a
+boe.es, no insinuar que el BOE apoya el producto y respetar el RGPD. La ficha y
+el buscador llevan esa cita (`src/components/CitaBOE.tsx`). Lo que la licencia
+no resuelve es el **cómo**: el `robots.txt` del portal pide a los programas
+que no entren. Es la práctica de todo el sector (hay al menos ocho productos
+que viven de estos datos y los sacan igual), pero eso es lo que un abogado
+tiene que conciliar antes de cobrar al primer cliente.
 
-Vías posibles, por orden de limpieza:
+**Cómo lee el portal** (`src/ingesta/adaptadores/boe.ts`). Como lo leería una
+persona: una búsqueda por estado para descubrir y las pestañas de cada ficha
+para el detalle, a una petición cada segundo y medio, sin sesión y con un
+`User-Agent` que dice quién es (pon un correo en `BOE_CONTACTO` para que
+puedan escribir). Con unas 900 subastas de inmuebles abiertas, una pasada
+completa son unas 4.000 peticiones repartidas en el día. Lo que costó
+descubrir está comentado en el fichero; lo esencial:
 
-1. Comprobar qué ofrece el propio portal a un usuario registrado (alertas por
-   correo, búsquedas guardadas, exportación). Es acceso consentido por diseño.
-2. Solicitar autorización a la Agencia Estatal BOE.
-3. Un proveedor intermediario que ya venda los datos normalizados.
-4. Rastreo respetuoso asumiendo el riesgo de bloqueo.
+- Sin sesión solo se pueden buscar **tres estados**: próxima apertura,
+  celebrándose y suspendida. Concluidas y canceladas devuelven cero resultados
+  aunque existan. Una subasta «desaparece» del descubrimiento al concluir, pero
+  su ficha sigue y lo dice en la cabecera; cuando el portal la retira del todo,
+  la ficha responde «no existe» y el worker deja de refrescarla sin borrar nada.
+- La ficha **no tiene campo de estado**. Se deduce de las frases de la
+  cabecera y, si no hay, de las fechas. El listado sí lo dice, y el adaptador
+  lo recuerda. El número de expediente también está solo en el listado.
+- Las **pujas nunca son visibles** sin sesión: el portal solo dice si ha
+  recibido alguna. `num_pujas` vale 0, 1 (al menos una) o null (secreta).
+- Con varios lotes, cada lote es una petición aparte y los importes van en su
+  propia tabla.
+- Cargas, situación posesoria y vivienda habitual vienen como **campos
+  estructurados** en la pestaña de bienes. Cuando son un dato (la Agencia
+  Tributaria publica las cargas como importe, y «0,00 €» es que no hay) mandan
+  sobre la extracción. Cuando son prosa, pasan al extractor con su etiqueta
+  delante, y la ficha cita la frase literal. La fórmula de estilo del Servicio
+  de Subastas de Murcia («se mantendrán las cargas o gravámenes anteriores o
+  del mismo rango») se reconoce como tal y no cuenta como prueba de cargas.
 
-Por eso la fuente se enchufa en `src/ingesta/adaptadores/`. Para añadir una,
-implementa `Adaptador` (`descubrir` y `detalle`), regístrala en
-`src/ingesta/ejecutar.ts` y nada más de la aplicación se entera.
+Para mirar qué sale antes de encolar nada:
 
-**Antes de cobrar al primer cliente:** que un abogado revise la vía elegida, y
+```bash
+npm run boe:seco -- --cuantas=5
+```
+
+Las pruebas del adaptador corren sobre páginas reales guardadas en
+`tests/fixtures/boe/` (24 de octubre de 2026). Si el portal cambia el HTML,
+lo primero es volver a guardar esas páginas y ver qué prueba se rompe.
+
+**Lo que queda por decidir:** la base de producción sigue con los datos de
+muestra. Pasar a datos reales es borrar la semilla y dejar el worker corriendo
+desde un cron con `--adaptador=boe`. Y conviene mandar igualmente una
+solicitud a la Agencia Estatal BOE para tener el intento documentado.
+
+**Antes de cobrar al primer cliente:** que un abogado revise lo anterior, y
 un asesor fiscal la tabla de ITP de `src/datos/itp.ts`, que está sin verificar.
 
 ## Lo que falta
 
-- Adaptador de la fuente real y worker de descubrimiento, detalle y refresco.
+- Sustituir los datos de muestra de producción por la ingesta real del BOE
+  desde un cron, y la solicitud formal a la Agencia Estatal BOE.
 - Conectar un modelo real al revisor y medir su acierto contra las reglas.
 - Índices de precios reales para la valoración, en lugar de la tabla provisional.
 - Catastros forales de País Vasco y Navarra.
