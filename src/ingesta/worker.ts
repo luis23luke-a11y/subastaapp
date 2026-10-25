@@ -75,7 +75,10 @@ export async function ejecutarWorker(
 
   try {
     if (descubrir) {
-      await encolar({ fuente: adaptador.nombre, tipo: "descubrir", prioridad: 1 });
+      // Sin referencia nunca choca con el de la pasada anterior (dos nulos no
+      // son iguales para la restriccion de unicidad), pero "programar" deja
+      // claro que un descubrimiento se quiere ahora, este como este el viejo.
+      await encolar({ fuente: adaptador.nombre, tipo: "descubrir", prioridad: 1, modo: "programar" });
     }
 
     while (Date.now() < limite) {
