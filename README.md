@@ -23,7 +23,9 @@ Postgres 16 con PostGIS 3.4 en local y contra Neon con PostGIS 3.6.
 La vista de búsqueda es la migración **006 a propósito**: toca columnas que
 añaden migraciones posteriores a la del esquema base, y numerada antes fallaba
 en una base limpia pero no en una ya migrada. Es la peor clase de error, el que
-solo aparece cuando despliegas.
+solo aparece cuando despliegas. Y es la única migración que **sí se edita** en
+vez de añadir otra: se recrea entera cada vez que se aplica, así que cuando
+gane una columna se cambia ahí.
 
 Si tu entorno no puede abrir el puerto 5432 —pasa en más sitios de los que uno
 espera: contenedores de CI, sandboxes, algunas redes corporativas— pon
@@ -52,7 +54,7 @@ entorno, el enlace se envía por correo en vez de imprimirse.
 | `npm test` | Las 74 pruebas (`node --test`, sin dependencias) |
 | `npm run tipos` | `tsc --noEmit` |
 | `npm run db:migrar` | Aplica las migraciones de `db/` |
-| `npm run db:estado` | Comprueba PostGIS y cuenta las filas de cada tabla |
+| `npm run db:estado` | Comprueba PostGIS, cuenta filas por tabla y por fuente, y enseña las últimas pasadas del worker |
 | `npm run db:semilla` | Da de alta un invitado y siembra datos de muestra |
 | `npm run acceso` | Genera un enlace de acceso |
 | `npm run ingesta` | Una pasada del worker de ingesta |
@@ -287,18 +289,137 @@ Las pruebas del adaptador corren sobre páginas reales guardadas en
 `tests/fixtures/boe/` (24 de octubre de 2026). Si el portal cambia el HTML,
 lo primero es volver a guardar esas páginas y ver qué prueba se rompe.
 
-**Lo que queda por decidir:** la base de producción sigue con los datos de
-muestra. Pasar a datos reales es borrar la semilla y dejar el worker corriendo
-desde un cron con `--adaptador=boe`. Y conviene mandar igualmente una
+**En producción** el worker corre desde un cron de GitHub Actions cada 15
+minutos (ver «La ingesta en producción»), y la vista de búsqueda esconde los
+datos de muestra en cuanto hay datos reales. Lo que queda es mandar una
 solicitud a la Agencia Estatal BOE para tener el intento documentado.
 
 **Antes de cobrar al primer cliente:** que un abogado revise lo anterior, y
 un asesor fiscal la tabla de ITP de `src/datos/itp.ts`, que está sin verificar.
 
+## La ingesta en producción
+
+El worker corre solo desde un cron de **GitHub Actions**:
+`.github/workflows/ingesta-boe.yml` lanza cada 15 minutos
+
+```bash
+npm run ingesta -- --adaptador=boe --presupuesto=840
+```
+
+Catorce minutos de tope por pasada, y lo que no da tiempo se queda en la cola
+de Postgres para la siguiente. Lo medido en la primera pasada real (24 de
+octubre de 2026): el descubrimiento recorre los tres estados en dos minutos y
+medio y encuentra unas 1.200 subastas de inmuebles; después caben unas 65
+fichas por pasada, porque cada una son cuatro o cinco páginas a segundo y
+medio más las escrituras en la base, que desde el runner de GitHub (Estados
+Unidos) a Neon (Fráncfort) tienen su latencia. Llenar la base la primera vez
+lleva por tanto unas 18 pasadas, cuatro o cinco horas; a partir de ahí cada
+pasada solo refresca lo que el planificador dice que toca mirar, y el
+descubrimiento de cada pasada añade solo lo nuevo.
+
+### Por qué GitHub Actions y no Vercel Cron
+
+Se valoraron dos sitios donde colgar el cron:
+
+| | GitHub Actions | Vercel Cron |
+|---|---|---|
+| Qué ejecuta | El worker tal cual, como proceso Node normal | Una ruta API que habría que escribir |
+| Tope de tiempo | El que pongamos (hasta 6 horas) | El de una función: 10 s en el plan gratuito, 300 s en el de pago (más con *fluid compute*) |
+| Ritmo mínimo | 5 minutos | Una vez al día en el plan gratuito |
+| Qué hay que tocar | Un fichero YAML y un secreto | Una ruta nueva, `vercel.json`, y el plan de pago |
+| Dónde se ven los fallos | Pestaña Actions del repositorio, con el log entero | Logs de la función en Vercel |
+
+El worker ya está pensado para esto: tope de tiempo, cola en Postgres,
+rescate de trabajos a medias, varios workers sin pisarse. Meterlo dentro de
+una función de Vercel es pelearse con el límite de tiempo para nada. GitHub
+Actions lo corre como lo correría un `cron` de toda la vida.
+
+Lo que cuesta: un repositorio privado tiene 2.000 minutos de Actions al mes
+gratis. A 96 pasadas al día de unos 15 minutos cada una salen unos 1.400
+minutos al mes (cada pasada acaba antes del tope en cuanto la cola se vacía,
+así que suele ser menos), lo que roza el cupo. Si GitHub avisa de que se
+agota, cambiar el `cron` a cada 30 minutos lo deja en 700.
+
+Tres cosas de GitHub que conviene saber. Los `schedule` **solo se disparan en
+la rama por defecto** (`main`), y «Run workflow» solo aparece para workflows
+que ya existen en `main`; por eso el workflow también se lanza con un `push`
+que toque su propio fichero en cualquier otra rama, que es la forma de probar
+un cambio antes de fusionarlo. GitHub puede **retrasar** un cron unos minutos
+cuando hay cola; da igual, la siguiente pasada recoge lo pendiente. Y si el
+repositorio pasa **60 días sin actividad**, GitHub desactiva los `schedule` y
+avisa por correo; un push cualquiera los vuelve a activar.
+
+El bloque `concurrency` del workflow hace que, si una pasada se alarga, la
+siguiente espere en vez de arrancar en paralelo. Dos workers no se pisarían
+(la cola usa `for update skip locked`), pero doblarían el ritmo de peticiones
+al portal, que es lo que no queremos.
+
+### Qué hay que configurar
+
+En GitHub, en **Settings → Secrets and variables → Actions**:
+
+| Nombre | Dónde | Qué es |
+|---|---|---|
+| `DATABASE_URL` | Secrets | La misma cadena de Neon que usa Vercel (Vercel → `subastapp` → Settings → Environment Variables). |
+| `BOE_CONTACTO` | Variables | El correo que va en el `User-Agent` para que el BOE pueda escribir si el ritmo le molesta. |
+
+Desde la terminal, con `gh` autenticado, es lo mismo:
+
+```bash
+gh variable set BOE_CONTACTO --body "tu@correo.es"
+```
+
+y para el secreto, `gh secret set DATABASE_URL` pegando la cadena cuando la
+pida (no la pongas en la línea de comandos: se queda en el historial de la
+shell). `BOE_CONTACTO` es una variable y no un secreto a propósito: es un
+correo que queremos que se vea, y las variables se leen en los logs. Si falta,
+el workflow lo avisa en amarillo y sigue; el adaptador manda el `User-Agent`
+sin correo.
+
+Las migraciones **no** las aplica el cron: se aplican a mano con
+`npm run db:migrar` apuntando a la base de producción, que es lo que se hizo
+con la vista de abajo. Recrear la vista cada 15 minutos sería tomar un bloqueo
+exclusivo sobre ella 96 veces al día sin motivo.
+
+### Lanzarlo a mano y ver qué ha pasado
+
+```bash
+gh workflow run ingesta-boe.yml                  # una pasada ahora, en main
+gh run list --workflow=ingesta-boe.yml           # las últimas pasadas
+gh run view --log                                # el log de la última
+```
+
+En una rama de trabajo, en cambio, se lanza tocando el fichero del workflow y
+haciendo push (ver arriba).
+
+También desde la web: pestaña **Actions → Ingesta BOE → Run workflow**. Y
+desde el repo, `npm run db:estado` enseña las subastas por fuente, cuántos
+lotes ve el buscador y las cinco últimas pasadas del worker, con su error si
+lo hubo.
+
+### Qué pasa con los datos de muestra
+
+La base de producción se sembró con 240 subastas inventadas (fuente
+`muestra`) para poder enseñar el buscador antes de tener datos reales. Había
+dos formas de retirarlas: borrarlas con un script, o dejar que las consultas
+las ignoren. Se eligió lo segundo, y la regla está en la propia vista de
+búsqueda (`db/006_vistas.sql`): **la fuente `muestra` solo sale mientras no
+exista ninguna subasta de otra fuente**. En cuanto la primera subasta real
+entra en la base, el buscador, la ficha, el mapa y el desplegable de
+provincias dejan de ver las de muestra, todas a la vez y sin tocar una fila.
+
+Por qué así y no borrando: aquí nada se borra y no merece la pena abrir la
+excepción por unos datos que no estorban; borrar en cascada subastas, lotes,
+bienes, enriquecidos, snapshots, crudos y trabajos es justo la clase de script
+que un día alguien ejecuta contra la base equivocada; y con la base vacía
+(en local, o en una base nueva) los datos de muestra siguen sirviendo para
+desarrollar sin tener que rastrear nada. El coste es que las 240 filas siguen
+contando en `db:estado`, que por eso ahora desglosa por fuente.
+
 ## Lo que falta
 
-- Sustituir los datos de muestra de producción por la ingesta real del BOE
-  desde un cron, y la solicitud formal a la Agencia Estatal BOE.
+- La solicitud formal a la Agencia Estatal BOE, para tener el intento
+  documentado (la ingesta ya corre sola; ver «La ingesta en producción»).
 - Conectar un modelo real al revisor y medir su acierto contra las reglas.
 - Índices de precios reales para la valoración, en lugar de la tabla provisional.
 - Catastros forales de País Vasco y Navarra.
@@ -310,7 +431,8 @@ un asesor fiscal la tabla de ITP de `src/datos/itp.ts`, que está sin verificar.
 
 Los datos de muestra **no son reales**: los genera
 `src/ingesta/adaptadores/muestra.ts` con los repartos medidos sobre el fichero
-de Justicia. No los enseñes como si fueran subastas de verdad.
+de Justicia. No los enseñes como si fueran subastas de verdad. En cuanto la
+base tiene una subasta de otra fuente, la vista de búsqueda los esconde sola.
 
 Los anuncios reales contienen datos personales de deudores y acreedores. La
 aplicación va con `robots: noindex` y sin registro abierto justamente por eso:

@@ -12,6 +12,16 @@
 --
 -- Es una vista normal, no materializada: con unos 12.000 lotes al año el
 -- volumen no lo justifica y evita el problema de cuando refrescarla.
+--
+-- Los datos de muestra (fuente 'muestra', los que siembra db:semilla) solo
+-- salen mientras no haya nada real: en cuanto existe una subasta de otra
+-- fuente, la vista los deja fuera. Las filas se quedan en las tablas, que aqui
+-- nada se borra; simplemente el buscador y la ficha ya no las ven. Con la base
+-- vacia de verdad siguen sirviendo para desarrollar.
+--
+-- Este fichero es la excepcion a "una migracion no se edita": la vista se
+-- recrea entera cada vez que se aplica, asi que cuando gane una columna se
+-- cambia aqui, no en una migracion nueva.
 -- ---------------------------------------------------------------------------
 
 -- Se recrea entera: "create or replace" no admite insertar columnas en medio,
@@ -90,4 +100,8 @@ join subasta s on s.id = l.subasta_id
 left join lateral (
   select * from bien bb where bb.lote_id = l.id order by bb.orden, bb.id limit 1
 ) b on true
-left join bien_enriquecido e on e.bien_id = b.id;
+left join bien_enriquecido e on e.bien_id = b.id
+-- La subconsulta no depende de la fila, asi que Postgres la evalua una sola
+-- vez por consulta (InitPlan) y no por lote.
+where s.fuente <> 'muestra'
+   or not exists (select 1 from subasta otra where otra.fuente <> 'muestra');

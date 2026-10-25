@@ -1,0 +1,74 @@
+# Ingesta del Portal de Subastas del BOE desde un cron, cada 15 minutos.
+#
+# El worker (src/ingesta/worker.ts) es un proceso Node normal con tope de
+# tiempo: lo que no le da tiempo a hacer se queda en la cola de Postgres para
+# la siguiente pasada, y los trabajos a medias de una pasada que murio vuelven
+# solos a la cola. Por eso basta con un cron corriente y no hace falta tocar
+# Vercel. La seccion "La ingesta en produccion" del README explica por que
+# GitHub Actions y no Vercel Cron.
+#
+# Configuracion, en GitHub -> Settings -> Secrets and variables -> Actions:
+#   DATABASE_URL   secreto. La misma cadena de Neon que usa Vercel.
+#   BOE_CONTACTO   variable (no secreto). Correo que va en el User-Agent para
+#                  que el BOE pueda escribir si el ritmo le molesta.
+#
+# Dos cosas de GitHub que conviene saber: los "schedule" solo se disparan en la
+# rama por defecto (main), y GitHub los desactiva si el repositorio pasa 60 dias
+# sin actividad; un push cualquiera los vuelve a activar.
+
+name: Ingesta BOE
+
+on:
+  schedule:
+    # Cada 15 minutos. GitHub puede retrasar un cron unos minutos cuando hay
+    # cola de runners; no pasa nada, la siguiente pasada recoge lo pendiente.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      presupuesto:
+        description: Tope de la pasada, en segundos
+        default: "840"
+        required: false
+  # Para probar un cambio del workflow antes de fusionarlo: un push que toque
+  # este fichero en una rama que no sea main lanza una pasada real. Es la unica
+  # forma de ejecutarlo desde una rama, porque "Run workflow" y gh workflow run
+  # solo ven los workflows que ya existen en main.
+  push:
+    branches-ignore: [main]
+    paths: [".github/workflows/ingesta-boe.yml"]
+
+# Dos pasadas a la vez no se pisarian (la toma de trabajos usa "for update skip
+# locked"), pero doblarian el ritmo de peticiones al portal, que es justo lo que
+# no queremos. Con esto la segunda espera a que acabe la primera.
+concurrency:
+  group: ingesta-boe
+  cancel-in-progress: false
+
+jobs:
+  ingesta:
+    runs-on: ubuntu-latest
+    # 14 minutos de worker mas instalar dependencias. Si algo se cuelga de
+    # verdad, GitHub lo corta aqui y "rescatar" devuelve sus trabajos a la cola.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Avisar si falta el correo de contacto
+        if: vars.BOE_CONTACTO == ''
+        run: echo "::warning::BOE_CONTACTO no esta definida; el User-Agent ira sin correo de contacto. Ponla en Settings -> Secrets and variables -> Actions -> Variables."
+
+      - name: Una pasada del worker contra el Portal de Subastas del BOE
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOE_CONTACTO: ${{ vars.BOE_CONTACTO }}
+          DB_DRIVER: tcp
+          DB_MAX_CONEXIONES: "4"
+        run: npm run ingesta -- --adaptador=boe --presupuesto=${{ inputs.presupuesto || '840' }}
