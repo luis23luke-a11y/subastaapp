@@ -21,7 +21,7 @@ Fase 1 terminada y en producción. Lo que funciona de punta a punta:
   con precisión declarada, extractor de cargas con cita literal por campo.
 - Adaptador del Portal de Subastas del BOE (`src/ingesta/adaptadores/boe.ts`),
   que lee el portal sin sesión y despacio, probado sobre páginas reales.
-- 95 pruebas (`npm test`, `node --test`, sin dependencias de testing).
+- 101 pruebas (`npm test`, `node --test`, sin dependencias de testing).
 
 - Ingesta real en producción desde un cron de GitHub Actions
   (`.github/workflows/ingesta-boe.yml`, cada 15 minutos, tope de 14 minutos

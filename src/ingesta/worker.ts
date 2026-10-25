@@ -125,6 +125,8 @@ async function atender(
   if (trabajo.tipo === "descubrir") {
     await ctx.limitador.turno();
     for await (const id of adaptador.descubrir(ctx.desde)) {
+      // Modo "adelantar" (el de por defecto): una ficha ya bajada no se vuelve
+      // a encolar; de volver a mirarla se ocupa su trabajo "refrescar".
       await encolar({
         fuente: adaptador.nombre, tipo: "detalle", referencia: id, prioridad: 100,
       });
@@ -179,9 +181,12 @@ async function atender(
     resultado.subasta.estado,
   );
   if (plan.proxima) {
+    // "programar": la fecha nueva manda. Cuando este trabajo es el propio
+    // refresco, la fila que se actualiza es la suya, que esta en 'ejecutando';
+    // queda en 'pendiente' para la fecha siguiente y `completar` ya no la toca.
     await encolar({
       fuente: adaptador.nombre, tipo: "refrescar", referencia: id,
-      prioridad: plan.prioridad, ejecutarTras: plan.proxima,
+      prioridad: plan.prioridad, ejecutarTras: plan.proxima, modo: "programar",
     });
   }
 }

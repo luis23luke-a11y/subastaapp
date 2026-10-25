@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { consultar, unaFila } from "@/lib/db";
-import { esperaReintento, merecePena } from "@/ingesta/planificador";
+import { esperaReintento, merecePena, type ModoEncolado } from "@/ingesta/planificador";
 import type { Crudo } from "@/ingesta/adaptador";
 
 export type TipoTrabajo = "descubrir" | "detalle" | "refrescar" | "enriquecer";
@@ -16,23 +16,55 @@ export interface Trabajo {
   max_intentos: number;
 }
 
-/** Encola, o reprograma si ya estaba. Nunca pisa un trabajo en ejecucion. */
+// Dos maneras de encolar, que se distinguen en como se funde la peticion con
+// una fila que ya exista para la misma subasta y el mismo tipo de trabajo. La
+// tabla completa y el porque estan junto a `fusionarEncolado` en
+// src/ingesta/planificador.ts, que es la version pura de estas dos consultas
+// y la que se prueba; si se cambia una hay que cambiar la otra.
+//
+//   adelantar  no toca un trabajo hecho ni uno en marcha; adelanta un pendiente
+//              (gana la fecha y la prioridad mas tempranas) y reintenta un
+//              fallido desde cero. Es lo que hace el descubrimiento, y por eso
+//              una ficha ya bajada no vuelve a bajarse cada pasada.
+//   programar  la fecha y la prioridad nuevas mandan, este como este la fila.
+//              Es lo que hace un refresco al reprogramarse: su propia fila
+//              esta en 'ejecutando' en ese momento, y despues `completar` la
+//              respeta porque solo cierra lo que sigue en 'ejecutando'.
+const SQL_ENCOLAR: Record<ModoEncolado, string> = {
+  adelantar: `
+    insert into trabajo (fuente, tipo, referencia, prioridad, ejecutar_tras)
+    values ($1, $2, $3, $4, $5)
+    on conflict (fuente, tipo, referencia) do update set
+      estado = 'pendiente',
+      prioridad = least(trabajo.prioridad, excluded.prioridad),
+      ejecutar_tras = least(trabajo.ejecutar_tras, excluded.ejecutar_tras),
+      intentos = case when trabajo.estado = 'fallido' then 0 else trabajo.intentos end,
+      actualizado = now()
+    where trabajo.estado in ('pendiente', 'fallido')`,
+  programar: `
+    insert into trabajo (fuente, tipo, referencia, prioridad, ejecutar_tras)
+    values ($1, $2, $3, $4, $5)
+    on conflict (fuente, tipo, referencia) do update set
+      estado = 'pendiente',
+      prioridad = excluded.prioridad,
+      ejecutar_tras = excluded.ejecutar_tras,
+      intentos = 0,
+      ultimo_error = null,
+      actualizado = now()`,
+};
+
+/** Encola un trabajo, o lo funde con el que ya hubiera segun el modo. */
 export async function encolar(opciones: {
   fuente: string;
   tipo: TipoTrabajo;
   referencia?: string | null;
   prioridad?: number;
   ejecutarTras?: Date;
+  /** Por defecto "adelantar". Ver SQL_ENCOLAR. */
+  modo?: ModoEncolado;
 }): Promise<void> {
   await consultar(
-    `insert into trabajo (fuente, tipo, referencia, prioridad, ejecutar_tras)
-     values ($1, $2, $3, $4, $5)
-     on conflict (fuente, tipo, referencia) do update set
-       estado = case when trabajo.estado = 'ejecutando' then trabajo.estado else 'pendiente'::trabajo_estado end,
-       prioridad = least(trabajo.prioridad, excluded.prioridad),
-       ejecutar_tras = least(trabajo.ejecutar_tras, excluded.ejecutar_tras),
-       intentos = case when trabajo.estado = 'fallido' then 0 else trabajo.intentos end,
-       actualizado = now()`,
+    SQL_ENCOLAR[opciones.modo ?? "adelantar"],
     [opciones.fuente, opciones.tipo, opciones.referencia ?? null,
      opciones.prioridad ?? 100, opciones.ejecutarTras ?? new Date()],
   );
@@ -42,9 +74,15 @@ export async function tomar(fuente: string, cuantos: number): Promise<Trabajo[]>
   return consultar<Trabajo>(`select * from tomar_trabajos($1, $2)`, [fuente, cuantos]);
 }
 
+/**
+ * Da por hecho un trabajo. Solo si sigue en 'ejecutando': un refresco que se
+ * ha reprogramado a si mismo (encolar con modo "programar") ya ha dejado su
+ * fila en 'pendiente' con la fecha siguiente, y esto no debe deshacerlo.
+ */
 export async function completar(id: number): Promise<void> {
   await consultar(
-    `update trabajo set estado = 'hecho', ultimo_error = null, actualizado = now() where id = $1`,
+    `update trabajo set estado = 'hecho', ultimo_error = null, actualizado = now()
+     where id = $1 and estado = 'ejecutando'`,
     [id],
   );
 }

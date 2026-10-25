@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { esperaReintento, merecePena, planificarRefresco } from "../src/ingesta/planificador";
+import {
+  esperaReintento, fusionarEncolado, merecePena, planificarRefresco,
+  type FilaEnCola, type PeticionEncolar,
+} from "../src/ingesta/planificador";
 
 const AHORA = new Date("2026-10-24T12:00:00Z");
 const enHoras = (h: number) => new Date(AHORA.getTime() + h * 3_600_000);
@@ -58,4 +61,64 @@ test("un 404 no se reintenta; una caida de red si", () => {
   assert.equal(merecePena(new Error("HTTP 403 Forbidden")), false);
   assert.equal(merecePena(new Error("HTTP 503 Service Unavailable")), true);
   assert.equal(merecePena(new Error("ECONNRESET")), true);
+});
+
+// --- Fusion al encolar (regla de la cola, version pura) ----------------------
+
+const fila = (estado: FilaEnCola["estado"], horas: number, prioridad = 100, intentos = 1): FilaEnCola =>
+  ({ estado, prioridad, ejecutarTras: enHoras(horas), intentos });
+const peticion = (horas: number, prioridad = 100): PeticionEncolar =>
+  ({ prioridad, ejecutarTras: enHoras(horas) });
+
+test("adelantar: una ficha ya bajada no se vuelve a encolar", () => {
+  // Lo que paso en produccion: el descubrimiento de cada pasada encolaba los
+  // 1.227 detalles, y los hechos volvian a 'pendiente' con su fecha vieja.
+  assert.equal(fusionarEncolado(fila("hecho", -3), peticion(0), "adelantar"), null);
+});
+
+test("adelantar: un trabajo en marcha no se toca", () => {
+  assert.equal(fusionarEncolado(fila("ejecutando", -1), peticion(0), "adelantar"), null);
+});
+
+test("adelantar: un trabajo fallido se reintenta de cero", () => {
+  const r = fusionarEncolado(fila("fallido", 1, 100, 5), peticion(0), "adelantar");
+  assert.ok(r);
+  assert.equal(r.estado, "pendiente");
+  assert.equal(r.intentos, 0);
+  // Gana la fecha mas temprana: el reintento no espera a la espera del fallo.
+  assert.deepEqual(r.ejecutarTras, enHoras(0));
+});
+
+test("adelantar: un pendiente se queda con lo mas temprano y conserva sus intentos", () => {
+  const r = fusionarEncolado(fila("pendiente", 2, 100, 2), peticion(5, 50), "adelantar");
+  assert.ok(r);
+  assert.deepEqual(r.ejecutarTras, enHoras(2), "la fecha vieja era antes");
+  assert.equal(r.prioridad, 50, "la prioridad nueva era mas urgente");
+  assert.equal(r.intentos, 2);
+
+  const adelantado = fusionarEncolado(fila("pendiente", 24), peticion(0), "adelantar");
+  assert.deepEqual(adelantado?.ejecutarTras, enHoras(0), "una peticion mas temprana adelanta");
+});
+
+test("programar: la fecha nueva manda, este como este la fila", () => {
+  // Un refresco que se reprograma choca con su propia fila, que esta en
+  // 'ejecutando' con la fecha ya pasada. Con least() ganaba la vieja y la
+  // subasta se refrescaba una sola vez.
+  for (const estado of ["ejecutando", "hecho", "fallido", "pendiente"] as const) {
+    const r = fusionarEncolado(fila(estado, -1, 300, 3), peticion(6, 10), "programar");
+    assert.ok(r, estado);
+    assert.equal(r.estado, "pendiente", estado);
+    assert.deepEqual(r.ejecutarTras, enHoras(6), estado);
+    assert.equal(r.prioridad, 10, `${estado}: la prioridad nueva manda, aunque sea menos urgente`);
+    assert.equal(r.intentos, 0, estado);
+  }
+  const atrasado = fusionarEncolado(fila("pendiente", 0, 10), peticion(24, 200), "programar");
+  assert.deepEqual(atrasado?.ejecutarTras, enHoras(24), "programar tambien puede retrasar");
+});
+
+test("sin fila previa, en los dos modos, la fila nueva entra tal cual", () => {
+  for (const modo of ["adelantar", "programar"] as const) {
+    assert.deepEqual(fusionarEncolado(null, peticion(1, 7), modo),
+      { estado: "pendiente", prioridad: 7, ejecutarTras: enHoras(1), intentos: 0 });
+  }
 });
