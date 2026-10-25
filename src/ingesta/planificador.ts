@@ -100,3 +100,69 @@ export function merecePena(error: unknown): boolean {
   if (/no existe|not found|prohibido|forbidden/i.test(mensaje)) return false;
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Que pasa al encolar un trabajo que ya estaba en la cola.
+//
+// La cola no admite dos filas para la misma subasta y el mismo tipo de trabajo
+// (db/003_ingesta.sql), asi que encolar algo que ya existe es siempre una
+// fusion con la fila vieja. Hay dos intenciones distintas detras de un
+// "encolar", y confundirlas costo una pasada entera en produccion (24 de
+// octubre de 2026): el descubrimiento devolvia a "pendiente" las fichas ya
+// bajadas con su fecha original, que era la mas antigua de la cola, y cada
+// pasada volvia a bajar las mismas 34 fichas en vez de avanzar.
+//
+//   adelantar  "esto hay que hacerlo, si no esta hecho ya". Es lo que hace el
+//              descubrimiento con cada ficha y el detalle con cada bien por
+//              enriquecer. Un trabajo hecho no se toca (del refresco se ocupa
+//              el trabajo "refrescar", no el descubrimiento); uno en marcha
+//              tampoco; uno pendiente se queda con la fecha y la prioridad mas
+//              tempranas de las dos; uno fallido vuelve a intentarse de cero.
+//
+//   programar  "la proxima vez es esta". Es lo que hace un refresco al
+//              reprogramarse: la fecha y la prioridad nuevas mandan, aunque la
+//              fila este hecha, fallida o siendo ejecutada por este mismo
+//              trabajo. Si ganase la fecha vieja, como pasaba con least(),
+//              una subasta recien cerrada se refrescaria una sola vez en lugar
+//              de cada seis horas durante dos dias.
+//
+// La consulta SQL de `encolar` en src/ingesta/cola.ts aplica esta misma tabla;
+// esta funcion existe para poder probarla sin base de datos
+// (tests/planificador.test.ts). Si se cambia una hay que cambiar la otra.
+// ---------------------------------------------------------------------------
+
+export type ModoEncolado = "adelantar" | "programar";
+export type EstadoTrabajo = "pendiente" | "ejecutando" | "hecho" | "fallido";
+
+export interface FilaEnCola {
+  estado: EstadoTrabajo;
+  prioridad: number;
+  ejecutarTras: Date;
+  intentos: number;
+}
+
+export interface PeticionEncolar {
+  prioridad: number;
+  ejecutarTras: Date;
+}
+
+/**
+ * Como queda la fila tras encolar. `null` significa que la fila existente no
+ * se toca. Sin fila existente, el resultado es la fila nueva tal cual.
+ */
+export function fusionarEncolado(
+  existente: FilaEnCola | null,
+  nueva: PeticionEncolar,
+  modo: ModoEncolado,
+): FilaEnCola | null {
+  if (existente === null || modo === "programar") {
+    return { estado: "pendiente", prioridad: nueva.prioridad, ejecutarTras: nueva.ejecutarTras, intentos: 0 };
+  }
+  if (existente.estado === "hecho" || existente.estado === "ejecutando") return null;
+  return {
+    estado: "pendiente",
+    prioridad: Math.min(existente.prioridad, nueva.prioridad),
+    ejecutarTras: new Date(Math.min(existente.ejecutarTras.getTime(), nueva.ejecutarTras.getTime())),
+    intentos: existente.estado === "fallido" ? 0 : existente.intentos,
+  };
+}

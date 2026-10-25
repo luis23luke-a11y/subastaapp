@@ -32,7 +32,10 @@ on:
   # Para probar un cambio del workflow antes de fusionarlo: un push que toque
   # este fichero en una rama que no sea main lanza una pasada real. Es la unica
   # forma de ejecutarlo desde una rama, porque "Run workflow" y gh workflow run
-  # solo ven los workflows que ya existen en main.
+  # solo ven los workflows que ya existen en main. Sirve tambien para probar un
+  # cambio del worker: la ultima linea del log dice cuantas fichas fueron
+  # nuevas y cuantas actualizadas, y debajo sale la cola por tipo y estado
+  # (npm run db:estado la enseña tambien, con las ultimas pasadas).
   push:
     branches-ignore: [main]
     paths: [".github/workflows/ingesta-boe.yml"]

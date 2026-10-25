@@ -12,7 +12,7 @@ Lo que ya funciona, probado de punta a punta contra Postgres 16 con PostGIS 3.4:
 - Calculadora de coste de adquisición y margen, con ITP por comunidad.
 - Adaptador de ingesta enchufable, con uno de muestra y uno real para el
   Portal de Subastas del BOE, probado sobre páginas reales guardadas.
-- 95 pruebas: costes, filtros, planificador, extracción de cargas, importes,
+- 101 pruebas: costes, filtros, planificador y cola, extracción de cargas, importes,
   direcciones, valoración, validación del revisor y el adaptador del BOE.
 
 ## Arrancar en local
@@ -51,7 +51,7 @@ entorno, el enlace se envía por correo en vez de imprimirse.
 | Comando | Qué hace |
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
-| `npm test` | Las 74 pruebas (`node --test`, sin dependencias) |
+| `npm test` | Las 101 pruebas (`node --test`, sin dependencias) |
 | `npm run tipos` | `tsc --noEmit` |
 | `npm run db:migrar` | Aplica las migraciones de `db/` |
 | `npm run db:estado` | Comprueba PostGIS, cuenta filas por tabla y por fuente, y enseña las últimas pasadas del worker |
@@ -104,6 +104,27 @@ un worker que murió a medias vuelven solos a la cola a los 30 minutos. Varios
 workers pueden correr a la vez sin pisarse, porque la toma usa `for update skip
 locked`. Los fallos se reintentan con espera creciente y con ruido, salvo un 404
 o un 403, que no se reintentan nunca.
+
+Una subasta no puede estar dos veces en la cola para el mismo tipo de trabajo,
+así que encolar algo que ya estaba es fundir la petición con la fila vieja. Hay
+**dos modos de encolar**, y la regla es la de `fusionarEncolado` en
+`src/ingesta/planificador.ts`, con sus pruebas:
+
+| Si la fila ya existe y está… | `adelantar` (descubrimiento, bienes por enriquecer) | `programar` (un refresco que se reprograma) |
+|---|---|---|
+| hecha | no se toca | vuelve a pendiente con la fecha nueva |
+| en marcha | no se toca | queda pendiente para la fecha nueva; `completar` ya no la cierra |
+| pendiente | gana la fecha y la prioridad más tempranas | la fecha y la prioridad nuevas mandan |
+| fallida | se reintenta de cero | la fecha y la prioridad nuevas mandan |
+
+La consecuencia que importa: **el descubrimiento no vuelve a bajar una ficha
+ya bajada**; de volver a mirarla se ocupa su trabajo `refrescar`, al ritmo de
+la tabla de arriba. Antes no era así, y se notó en la segunda pasada real (24
+de octubre de 2026): de 53 fichas procesadas, 34 eran las mismas de la primera
+pasada, porque el descubrimiento las devolvía a pendiente con su fecha
+original, que era la más antigua de la cola. Y un refresco que se reprogramaba
+chocaba con su propia fila y se quedaba con la fecha vieja, así que una subasta
+recién cerrada se miraba una vez en lugar de cada seis horas durante dos días.
 
 Dos cosas que parecen detalles y no lo son. El **contenido crudo** se guarda
 antes de parsearlo, así que el día que mejoremos la extracción de cargas se
