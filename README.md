@@ -350,6 +350,27 @@ dice que no es un portal. Lo que viene detrás del número (planta, puerta,
 escalera, «Es:1 Pl:01 Pt:01», el municipio repetido) se tira. De un rango
 («9-11-13», «62-68») vale el primero.
 
+Sacar el número es la mitad: la otra mitad es que el Catastro lo encuentre.
+Las 253 direcciones distintas con número (516 bienes) se pasaron por la
+cadena real de `geocodificar` el mismo día, con la caché del Catastro
+guardando cada respuesta:
+
+| Lo que respondió el Catastro | Direcciones | Bienes |
+|---|---|---|
+| Portal encontrado (`portal`) | 79 | 154 |
+| No lo encuentra, pero el municipio está en la tabla (`municipio`) | 32 | 58 |
+| No lo encuentra y el municipio tampoco está (`ninguna`) | 140 | 302 |
+| Tiempo de espera agotado (se reintenta solo) | 2 | 2 |
+
+Los motivos por los que no lo encuentra, contados sobre las consultas: 70
+«la vía no existe» (el nombre del anuncio no es el del Catastro: «AVENIDA
+BARCELON», abreviaturas, nombres antiguos), 27 «el municipio no existe»
+(abajo), 19 «el número no existe» en esa calle, 12 «ningún inmueble» y 11
+de provincias forales. La primera pasada real en producción había dejado 0
+bienes en `portal`; con esto, un 30 % de los que traen número llegan.
+Antes de pasar a `portal` habría tenido que fallar por tres sitios a la
+vez, que es lo que pasaba:
+
 Tres cosas del Catastro que costó descubrir y que hacían inútil cualquier
 número bien sacado:
 
@@ -678,11 +699,14 @@ contando en `db:estado`, que por eso ahora desglosa por fuente.
 - Conectar un modelo real al revisor y medir su acierto contra las reglas.
 - Índices de precios reales para la valoración, en lugar de la tabla provisional.
 - Catastros forales de País Vasco y Navarra.
-- Municipios bilingües en la consulta por dirección al Catastro: el anuncio
-  dice «MONOVAR» y el Catastro solo entiende «MONOVAR/MONOVER». Su
-  `ConsultaMunicipio` admite nombres parciales y devuelve el oficial; habría
-  que resolverlo una vez por municipio y guardarlo en la caché. Afecta a
-  parte de la Comunidad Valenciana, Cataluña, Baleares y Galicia.
+- El nombre del municipio en la consulta por dirección al Catastro. El
+  anuncio dice «MONOVAR», «ALICANTE», «SANTA LUCIA» o «JEREZ FRONTERA» y el
+  Catastro solo entiende «MONOVAR/MONOVER», «ALICANTE/ALACANT», «SANTA LUCIA
+  DE TIRAJANA» y «JEREZ DE LA FRONTERA»: en la medición del 26 de octubre
+  de 2026, 27 de unas 300 consultas por dirección murieron en «EL MUNICIPIO
+  NO EXISTE», 12 de ellas de Santa Lucía de Tirajana. Su `ConsultaMunicipio`
+  admite nombres parciales y devuelve el oficial; habría que resolverlo una
+  vez por municipio en `catastro.ts` y guardarlo en la caché.
 - Las 206 direcciones sin ningún dígito y las 93 con «s/n» no tienen
   portal que buscar: su única mejora es la tabla de municipios de abajo,
   para que al menos lleguen a `municipio` y no a `ninguna`.
