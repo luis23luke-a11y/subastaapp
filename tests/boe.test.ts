@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
-  AdaptadorBOE, camposDeTabla, cuotaDeTitulo, decodificarEntidades, estadoDeCabecera,
+  AdaptadorBOE, camposDeTabla, cuotaDeTitulo, decodificarEntidades, estadoDeCabecera, parsearRefresco,
   fechaIso, importe, noExiste, numeroDeLotes, parsearBusqueda, parsearPujas,
   parsearSubasta, tipoDeBien, tipoDeSubasta, type Obtenido,
 } from "@/ingesta/adaptadores/boe";
@@ -319,6 +319,50 @@ test("las pujas: ninguna, alguna, secreta y la tabla por lotes", () => {
   const lotes = parsearPujas(fixture("lotes-ver5.html")).porLote;
   assert.equal(lotes.size, 10);
   assert.equal(lotes.get(7), 1);
+});
+
+test("el refresco ligero lee estado, fechas y pujas en dos peticiones", async () => {
+  const peticiones: string[] = [];
+  const a = new AdaptadorBOE({ obtener: obtenerDeFixtures(peticiones), msEntrePeticiones: 0 });
+  const r = await a.detalleLigero("SUB-JA-2024-230270");
+  assert.ok(r);
+  // general + pujas, y nada mas: ni autoridad ni los diez lotes.
+  assert.equal(peticiones.length, 2);
+  assert.ok(peticiones[0]!.includes("ver=1"));
+  assert.ok(peticiones[1]!.includes("ver=5"));
+
+  const s = r.subasta;
+  assert.equal(s.idExterno, "SUB-JA-2024-230270");
+  assert.equal(s.lotes.length, 10, "un lote por cada uno de la ficha, para su snapshot");
+  assert.ok(s.lotes.every((l) => l.numPujas === 1));
+  assert.equal(s.lotes[6]?.numero, 7);
+  assert.deepEqual(r.crudo?.map((c) => c.etiqueta), ["general", "pujas"]);
+
+  // Lo que dice es lo mismo que diria el detalle completo.
+  const completo = (await a.detalle("SUB-JA-2024-230270"))!.subasta;
+  assert.equal(s.estado, completo.estado);
+  assert.equal(s.fechaInicio, completo.fechaInicio);
+  assert.equal(s.fechaFin, completo.fechaFin);
+  assert.deepEqual(s.lotes.map((l) => l.numPujas), completo.lotes.map((l) => l.numPujas));
+});
+
+test("el refresco ligero de un solo lote, y de una retirada del portal", async () => {
+  const a = new AdaptadorBOE({ obtener: obtenerDeFixtures(), msEntrePeticiones: 0 });
+  const r = await a.detalleLigero("SUB-JA-2021-163298");
+  assert.equal(r?.subasta.lotes.length, 1);
+  assert.equal(r?.subasta.lotes[0]?.numPujas, 0);
+  assert.equal((await a.detalleLigero("SUB-JA-2026-258000"))?.subasta.estado, "puja_concluida");
+  assert.equal(await a.detalleLigero("SUB-JA-2026-250000"), null);
+});
+
+test("parsearRefresco aplica las mismas reglas de estado que parsearSubasta", () => {
+  const paginas = { general: fixture("judicial-ver1.html"), pujas: fixture("judicial-ver5.html") };
+  assert.equal(parsearRefresco("SUB-JA-2021-163298", paginas, { estado: "suspendida" }, AHORA).estado, "suspendida");
+  assert.equal(parsearRefresco("SUB-JA-2021-163298", paginas, null, new Date("2026-12-01")).estado, "puja_concluida");
+  const proxima = parsearRefresco("SUB-AT-2026-25R4586001030",
+    { general: fixture("proxima-ver1.html"), pujas: fixture("proxima-ver5.html") });
+  assert.equal(proxima.estado, "publicada");
+  assert.equal(proxima.lotes[0]?.numPujas, null);
 });
 
 test("un error HTTP del portal se propaga con el codigo en el mensaje, para que la cola decida", async () => {

@@ -126,6 +126,46 @@ original, que era la más antigua de la cola. Y un refresco que se reprogramaba
 chocaba con su propia fila y se quedaba con la fecha vieja, así que una subasta
 recién cerrada se miraba una vez en lugar de cada seis horas durante dos días.
 
+### Cómo se reparte una pasada
+
+Una pasada de catorce minutos no da para todo, y el orden en que se toma la
+cola decide qué avanza. La cola se toma por prioridad, y el refresco de una
+subasta que cierra hoy tiene prioridad 10 frente al 100 de una ficha nueva.
+Con una subasta que cierra hoy es lo que se quiere; con doscientas, la pasada
+entera se va en refrescarlas y las mil fichas que faltan por bajar no avanzan.
+Pasó el 26 de octubre de 2026: 36 actualizadas, 0 nuevas y 999 fichas sin
+bajar al cabo de una pasada. Desde entonces hay tres reglas, las dos primeras
+en `src/ingesta/planificador.ts` como funciones puras con pruebas:
+
+- **Cada lote de trabajos reserva sitio para fichas nuevas** (`repartirLote`).
+  El worker toma los trabajos de veinte en veinte; mientras haya fichas sin
+  bajar, diez de cada veinte son trabajos `detalle` y los otros diez van por
+  prioridad, sean del tipo que sean. Sin fichas nuevas pendientes, el lote
+  entero va por prioridad. Así una pasada nunca se va entera en refrescos
+  mientras quede algo por bajar, y lo que cierra hoy sigue teniendo medio
+  lote. Dentro del lote se alternan lo urgente y lo nuevo (`intercalar`), para
+  que si el tiempo se agota a mitad de lote no se queden fuera siempre los
+  mismos; los que se quedan fuera vuelven a la cola tal cual, sin que cuente
+  como intento.
+- **Un refresco cuesta la mitad que una ficha nueva.** De una subasta ya
+  bajada solo cambian el estado, las fechas y las pujas, y eso está en dos
+  pestañas del portal: la general y la de pujas. El adaptador ofrece un
+  `detalleLigero` que pide solo esas dos (frente a las cuatro o cinco de la
+  ficha entera), y el worker lo usa para los trabajos `refrescar`. Lo que
+  trae se escribe con `refrescarSubasta`, que solo toca el estado, las fechas
+  y el snapshot del lote: los bienes, las cargas, los importes y la autoridad
+  no se mencionan en esa consulta, así que un refresco no puede pisarlos con
+  nulos. El crudo de las dos pestañas se guarda igual. El método es opcional
+  en la interfaz: una fuente que no lo ofrezca se refresca con la ficha
+  entera, y el adaptador de muestra sigue como estaba.
+- **Lo que son muchas filas va en una sentencia.** El descubrimiento encola
+  las 1.225 fichas con un `insert … select from unnest` por tanda de 500, en
+  vez de una ida y vuelta por ficha; las pestañas crudas de una ficha se
+  guardan en un solo insert; y los bienes por enriquecer que cada ficha deja
+  en cola, también. Desde el runner de GitHub (Estados Unidos) a Neon
+  (Fráncfort) cada ida y vuelta son más de cien milisegundos, y el
+  descubrimiento solo gastaba cuatro minutos de cada pasada en encolar.
+
 Dos cosas que parecen detalles y no lo son. El **contenido crudo** se guarda
 antes de parsearlo, así que el día que mejoremos la extracción de cargas se
 reparsea sin volver a pedir nada al origen. Y un **snapshot** solo se escribe
@@ -328,15 +368,21 @@ npm run ingesta -- --adaptador=boe --presupuesto=840
 ```
 
 Catorce minutos de tope por pasada, y lo que no da tiempo se queda en la cola
-de Postgres para la siguiente. Lo medido en la primera pasada real (24 de
-octubre de 2026): el descubrimiento recorre los tres estados en dos minutos y
-medio y encuentra unas 1.200 subastas de inmuebles; después caben unas 65
-fichas por pasada, porque cada una son cuatro o cinco páginas a segundo y
-medio más las escrituras en la base, que desde el runner de GitHub (Estados
-Unidos) a Neon (Fráncfort) tienen su latencia. Llenar la base la primera vez
-lleva por tanto unas 18 pasadas, cuatro o cinco horas; a partir de ahí cada
-pasada solo refresca lo que el planificador dice que toca mirar, y el
-descubrimiento de cada pasada añade solo lo nuevo.
+de Postgres para la siguiente. Lo medido en producción:
+
+| | 26 de octubre de 2026, por la mañana | Misma tarde, tras «Cómo se reparte una pasada» |
+|---|---|---|
+| Descubrimiento (1.225 subastas) | unos 6 minutos: encolaba una a una | 7 segundos: una sentencia por tanda de 500 |
+| Fichas por pasada | 36 (0 nuevas, 36 actualizadas) | 116 (77 nuevas, 39 actualizadas) |
+| Peticiones por refresco | 4 o 5 | 2 |
+
+Cada ficha nueva son cuatro o cinco páginas del portal a segundo y medio,
+más las escrituras en la base, que desde el runner de GitHub (Estados Unidos)
+a Neon (Fráncfort) tienen su latencia; un refresco, dos páginas. Llenar la
+base la primera vez lleva unas 13 pasadas; a partir de ahí
+cada pasada refresca lo que el planificador dice que toca mirar, reserva
+medio lote para lo que falte por bajar, y el descubrimiento añade solo lo
+nuevo.
 
 ### Por qué GitHub Actions y no Vercel Cron
 

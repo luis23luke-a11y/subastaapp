@@ -7,6 +7,7 @@
 //   npm run boe:seco -- --cuantas=10      lee 10
 //   npm run boe:seco -- --id=SUB-JA-2026-261020   solo esa ficha
 //   npm run boe:seco -- --json            la SubastaBruta entera, en JSON
+//   npm run boe:seco -- --ligero          el refresco ligero (2 peticiones) en vez de la ficha entera
 
 import { AdaptadorBOE } from "@/ingesta/adaptadores/boe";
 import { extraerDeTexto } from "@/enriquecimiento/extraer";
@@ -21,6 +22,7 @@ async function principal() {
   const cuantas = Number.parseInt(argumento("cuantas", "3")!, 10);
   const id = argumento("id");
   const enJson = process.argv.includes("--json");
+  const ligero = process.argv.includes("--ligero");
 
   const ids: string[] = [];
   if (id) ids.push(id);
@@ -33,6 +35,15 @@ async function principal() {
   }
 
   for (const i of ids) {
+    if (ligero) {
+      const antes = adaptador.peticiones();
+      const r = await adaptador.detalleLigero(i);
+      if (!r) { console.info(`${i}: no existe en el portal`); continue; }
+      const s = r.subasta;
+      console.info(`\n${s.idExterno}  ${s.estado}  ${s.fechaInicio ?? "sin inicio"} → ${s.fechaFin ?? "sin fin"}  (${adaptador.peticiones() - antes} peticiones)`);
+      for (const l of s.lotes) console.info(`  lote ${l.numero}: pujas ${l.numPujas ?? "?"}`);
+      continue;
+    }
     const r = await adaptador.detalle(i);
     if (!r) { console.info(`${i}: no existe en el portal`); continue; }
     const s = r.subasta;

@@ -12,6 +12,10 @@
 #   BOE_CONTACTO   variable (no secreto). Correo que va en el User-Agent para
 #                  que el BOE pueda escribir si el ritmo le molesta.
 #
+# Cada lote de trabajos reserva la mitad para fichas nuevas y un refresco pide
+# solo dos pestañas del portal; la regla y las cifras estan en el README, en
+# "Como se reparte una pasada" y "La ingesta en produccion".
+#
 # Dos cosas de GitHub que conviene saber: los "schedule" solo se disparan en la
 # rama por defecto (main), y GitHub los desactiva si el repositorio pasa 60 dias
 # sin actividad; un push cualquiera los vuelve a activar.

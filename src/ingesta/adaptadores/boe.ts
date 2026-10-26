@@ -40,7 +40,8 @@ import { comunidadDeProvincia } from "@/datos/provincias";
 import { importeEnCifras } from "@/enriquecimiento/importe";
 import { crearLimitador } from "@/ingesta/limitador";
 import type {
-  Adaptador, BienBruto, Crudo, LoteBruto, ResultadoDetalle, SubastaBruta,
+  Adaptador, BienBruto, Crudo, LoteBruto, ResultadoDetalle, ResultadoRefresco,
+  SubastaBruta, SubastaRefrescada,
 } from "@/ingesta/adaptador";
 import type { Estado, Situacion, TipoBien, TipoSubasta } from "@/lib/tipos";
 
@@ -396,6 +397,59 @@ function loteDeBloque(
 }
 
 /**
+ * El estado de una subasta: lo que diga la cabecera de la ficha; si no dice
+ * nada, lo que dijo el listado; y si tampoco, lo que se deduce de las fechas
+ * (ver la nota 2 de la cabecera del fichero).
+ */
+function estadoDeFicha(
+  general: string,
+  fechaInicio: string | null,
+  fechaFin: string | null,
+  delListado: Pick<ResultadoBusqueda, "estado"> | null,
+  ahora: Date,
+): Estado {
+  const dicho = estadoDeCabecera(cabeceraDeFicha(general)) ?? delListado?.estado ?? null;
+  if (dicho) return dicho;
+  if (!fechaInicio) return "publicada";
+  if (fechaFin && new Date(fechaFin).getTime() > ahora.getTime()) return "celebrandose";
+  if (fechaFin) return "puja_concluida";
+  return "desconocido";
+}
+
+/** Las dos pestañas que bastan para refrescar una subasta ya bajada. */
+export interface PaginasRefresco {
+  general: string;
+  pujas: string;
+}
+
+/**
+ * Lo que cambia de una subasta ya bajada, a partir de la pestaña general y la
+ * de pujas. Funcion pura, hermana de `parsearSubasta`: el estado y las fechas
+ * salen de las mismas reglas, y las pujas de la misma pestaña. Lo que no
+ * esta aqui (bienes, cargas, importes, autoridad) no cambia tras publicarse.
+ */
+export function parsearRefresco(
+  idExterno: string,
+  paginas: PaginasRefresco,
+  delListado: Pick<ResultadoBusqueda, "estado"> | null = null,
+  ahora: Date = new Date(),
+): SubastaRefrescada {
+  const general = camposDeTabla(paginas.general);
+  const fechaInicio = fechaIso(general["Fecha de inicio"]);
+  const fechaFin = fechaIso(general["Fecha de conclusión"]);
+  const estado = estadoDeFicha(paginas.general, fechaInicio, fechaFin, delListado, ahora);
+  const pujas = parsearPujas(paginas.pujas);
+  const n = numeroDeLotes(paginas.general);
+  const lotes = Array.from({ length: n }, (_, i) => ({
+    numero: i + 1,
+    estado,
+    numPujas: pujas.porLote.get(i + 1) ?? pujas.porLote.get(0) ?? null,
+    pujaActual: null,
+  }));
+  return { idExterno, estado, fechaInicio, fechaFin, lotes };
+}
+
+/**
  * Convierte las pestañas de una ficha en una SubastaBruta. Funcion pura: las
  * pruebas la ejercen con paginas guardadas del portal.
  */
@@ -411,13 +465,7 @@ export function parsearSubasta(
   const fechaInicio = fechaIso(general["Fecha de inicio"]);
   const fechaFin = fechaIso(general["Fecha de conclusión"]);
 
-  let estado = estadoDeCabecera(cabeceraDeFicha(paginas.general)) ?? delListado?.estado ?? null;
-  if (!estado) {
-    if (!fechaInicio) estado = "publicada";
-    else if (fechaFin && new Date(fechaFin).getTime() > ahora.getTime()) estado = "celebrandose";
-    else if (fechaFin) estado = "puja_concluida";
-    else estado = "desconocido";
-  }
+  const estado = estadoDeFicha(paginas.general, fechaInicio, fechaFin, delListado, ahora);
 
   const pujas = parsearPujas(paginas.pujas);
   const varios = paginas.lotes.length > 1;
@@ -566,6 +614,26 @@ export class AdaptadorBOE implements Adaptador {
       { etiqueta: "general", contenido: general },
       { etiqueta: "autoridad", contenido: autoridad },
       ...lotes.map((html, i) => ({ etiqueta: `bienes-lote-${i + 1}`, contenido: html })),
+      { etiqueta: "pujas", contenido: pujas },
+    ];
+    return { subasta, crudo };
+  }
+
+  /**
+   * Refresco en dos peticiones: la pestaña general (estado y fechas) y la de
+   * pujas. La autoridad gestora y los bienes no cambian tras publicarse, asi
+   * que no se vuelven a pedir: a segundo y medio por peticion, es la mitad
+   * del tiempo de portal de cada refresco. El crudo de las dos pestañas se
+   * guarda igual que en el detalle completo.
+   */
+  async detalleLigero(idExterno: string): Promise<ResultadoRefresco | null> {
+    const general = await this.pedir(this.urlFicha(idExterno, 1));
+    if (noExiste(general)) return null;
+    const pujas = await this.pedir(this.urlFicha(idExterno, 5));
+
+    const subasta = parsearRefresco(idExterno, { general, pujas }, this.vistos.get(idExterno) ?? null);
+    const crudo: Crudo[] = [
+      { etiqueta: "general", contenido: general },
       { etiqueta: "pujas", contenido: pujas },
     ];
     return { subasta, crudo };
