@@ -50,7 +50,7 @@ Portal de Subastas del BOE, con la cita que exige su licencia.
 
 | Qué | Valor |
 |---|---|
-| Repositorio | `github.com/luis23luke-a11y/subastaapp`, rama `main` |
+| Repositorio | `github.com/luis23luke-a11y/subastaapp`, rama `main`, **público** desde el 26/10/2026 para que los minutos de Actions del cron sean gratis (el README explica el cálculo) |
 | Proyecto Vercel | `subastapp` · `prj_GC6E1g9SWAQ3ebSjXxwABEzvdJws` |
 | Equipo Vercel | `team_ec6AxUehNY0PF3nDFtt69x61` |
 | Producción | https://subastapp-gold.vercel.app |

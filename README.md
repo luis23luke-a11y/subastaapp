@@ -356,10 +356,16 @@ una función de Vercel es pelearse con el límite de tiempo para nada. GitHub
 Actions lo corre como lo correría un `cron` de toda la vida.
 
 Lo que cuesta: un repositorio privado tiene 2.000 minutos de Actions al mes
-gratis. A 96 pasadas al día de unos 15 minutos cada una salen unos 1.400
-minutos al mes (cada pasada acaba antes del tope en cuanto la cola se vacía,
-así que suele ser menos), lo que roza el cupo. Si GitHub avisa de que se
-agota, cambiar el `cron` a cada 30 minutos lo deja en 700.
+gratis, y a 96 pasadas al día de hasta 15 minutos salen unos 1.400 minutos
+**al día**: el cupo se agota en día y medio y el cron se para solo, sin cobrar
+nada pero sin más aviso que un correo. Bajar el ritmo no lo arregla, porque
+mantener al día 1.200 subastas exige varias horas de rastreo diarias. Por eso
+el repositorio es **público** desde el 26 de octubre de 2026: en los públicos
+los minutos son gratis e ilimitados. El código no lleva secretos (la cadena de
+la base y el correo de contacto viven en los secretos del repositorio y en
+Vercel) y las páginas guardadas en `tests/fixtures/boe/` son las que el
+portal enseña a cualquiera sin sesión. Si algún día vuelve a ser privado, el
+cron tiene que mudarse a un servidor propio o a un PC encendido a diario.
 
 Tres cosas de GitHub que conviene saber. Los `schedule` **solo se disparan en
 la rama por defecto** (`main`), y «Run workflow» solo aparece para workflows
