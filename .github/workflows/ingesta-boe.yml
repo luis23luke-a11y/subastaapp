@@ -22,7 +22,10 @@ on:
   schedule:
     # Cada 15 minutos. GitHub puede retrasar un cron unos minutos cuando hay
     # cola de runners; no pasa nada, la siguiente pasada recoge lo pendiente.
-    - cron: "*/15 * * * *"
+    # Minutos "raros" a proposito: a las en punto, y cuarto, y media y menos
+    # cuarto GitHub tiene cola de medio mundo y descarta pasadas programadas.
+    # Medido el 26/10/2026 con */15: dos pasadas en siete horas.
+    - cron: "3,18,33,48 * * * *"
   workflow_dispatch:
     inputs:
       presupuesto:
