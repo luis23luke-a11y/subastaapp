@@ -384,6 +384,23 @@ cada pasada refresca lo que el planificador dice que toca mirar, reserva
 medio lote para lo que falte por bajar, y el descubrimiento añade solo lo
 nuevo.
 
+### Las pasadas van en cadena
+
+El horario de GitHub no vale como único lanzador: medido el 26 de octubre de
+2026, con `*/15` disparó dos pasadas en siete horas, y con los minutos
+desplazados ninguna en cinco. Por eso **cada pasada lanza la siguiente al
+terminar** (último paso del workflow, con el token del propio workflow y
+permiso `actions: write`), tras un minuto de respiro para el portal, y el
+horario queda solo de respaldo para volver a arrancar la cadena si se corta.
+Antes de lanzar la siguiente, la pasada mira si ya hay otra en cola o en
+marcha y, si la hay, no lanza nada: así nunca corren dos cadenas a la vez
+y el ritmo de peticiones al portal no se dobla. Una prueba desde una rama no
+encadena nada, solo las pasadas de `main`.
+
+Para parar la ingesta: GitHub → Actions → «Ingesta BOE» → «Disable workflow».
+Para volver a arrancarla: habilitarlo y pulsar «Run workflow», o esperar al
+siguiente cuarto de hora.
+
 ### Por qué GitHub Actions y no Vercel Cron
 
 Se valoraron dos sitios donde colgar el cron:

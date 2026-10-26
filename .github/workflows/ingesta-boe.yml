@@ -1,4 +1,8 @@
-# Ingesta del Portal de Subastas del BOE desde un cron, cada 15 minutos.
+# Ingesta del Portal de Subastas del BOE, en cadena: cada pasada lanza la
+# siguiente al terminar, y el horario de cada 15 minutos queda solo de respaldo
+# por si la cadena se corta. Medido el 26/10/2026: el horario de GitHub solo
+# disparo dos pasadas en siete horas, tambien con minutos desplazados, asi que
+# no vale como unico lanzador.
 #
 # El worker (src/ingesta/worker.ts) es un proceso Node normal con tope de
 # tiempo: lo que no le da tiempo a hacer se queda en la cola de Postgres para
@@ -24,11 +28,10 @@ name: Ingesta BOE
 
 on:
   schedule:
-    # Cada 15 minutos. GitHub puede retrasar un cron unos minutos cuando hay
-    # cola de runners; no pasa nada, la siguiente pasada recoge lo pendiente.
-    # Minutos "raros" a proposito: a las en punto, y cuarto, y media y menos
-    # cuarto GitHub tiene cola de medio mundo y descarta pasadas programadas.
-    # Medido el 26/10/2026 con */15: dos pasadas en siete horas.
+    # Respaldo: si la cadena se corta (un fallo de GitHub, una pasada que se
+    # cancela a mano), el horario la vuelve a arrancar. Minutos "raros" a
+    # proposito: a las en punto y a los cuartos GitHub acumula cola y descarta
+    # pasadas programadas.
     - cron: "3,18,33,48 * * * *"
   workflow_dispatch:
     inputs:
@@ -53,6 +56,13 @@ on:
 concurrency:
   group: ingesta-boe
   cancel-in-progress: false
+
+# "actions: write" es lo que permite a una pasada lanzar la siguiente con el
+# token del propio workflow. GitHub no crea pasadas a partir de eventos de ese
+# token, salvo precisamente workflow_dispatch y repository_dispatch.
+permissions:
+  contents: read
+  actions: write
 
 jobs:
   ingesta:
@@ -82,3 +92,26 @@ jobs:
           DB_DRIVER: tcp
           DB_MAX_CONEXIONES: "4"
         run: npm run ingesta -- --adaptador=boe --presupuesto=${{ inputs.presupuesto || '840' }}
+
+      - name: Encadenar la siguiente pasada
+        # Solo desde main: una prueba lanzada desde una rama no debe arrancar
+        # una cadena. Y aunque esta pasada haya fallado: una ficha rota o un
+        # corte de red no deben parar la ingesta.
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Si ya hay otra pasada en cola o en marcha (el horario de respaldo, o
+          # alguien que pulso "Run workflow"), no se lanza otra: con dos cadenas
+          # el ritmo de peticiones al portal se doblaria.
+          otras=$(gh run list --workflow=ingesta-boe.yml --limit 30 --json databaseId,status \
+            --jq '[.[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "pending" or .status == "requested")
+                        | select(.databaseId != ${{ github.run_id }})] | length')
+          if [ "$otras" != "0" ]; then
+            echo "Hay $otras pasada(s) en cola o en marcha: no se encadena otra."
+            exit 0
+          fi
+          # Un minuto de respiro para el portal entre pasada y pasada.
+          sleep 60
+          gh workflow run ingesta-boe.yml --ref main
+          echo "Siguiente pasada lanzada."
