@@ -368,8 +368,6 @@ BARCELON», abreviaturas, nombres antiguos), 27 «el municipio no existe»
 (abajo), 19 «el número no existe» en esa calle, 12 «ningún inmueble» y 11
 de provincias forales. La primera pasada real en producción había dejado 0
 bienes en `portal`; con esto, un 30 % de los que traen número llegan.
-Antes de pasar a `portal` habría tenido que fallar por tres sitios a la
-vez, que es lo que pasaba:
 
 Tres cosas del Catastro que costó descubrir y que hacían inútil cualquier
 número bien sacado:
