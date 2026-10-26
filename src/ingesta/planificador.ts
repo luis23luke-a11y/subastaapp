@@ -166,3 +166,62 @@ export function fusionarEncolado(
     intentos: existente.estado === "fallido" ? 0 : existente.intentos,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Reparto de cada lote de trabajos entre fichas nuevas y todo lo demas.
+//
+// La cola se toma por prioridad, y el refresco de lo que cierra hoy tiene
+// prioridad 10 frente al 100 de una ficha nueva. Con una subasta que cierra
+// hoy eso es lo que se quiere; con doscientas, la pasada entera se va en
+// refrescarlas y las mil fichas que faltan por bajar no avanzan (medido el
+// 26 de octubre de 2026: 36 actualizadas, 0 nuevas, 999 pendientes). Por eso
+// cada lote reserva sitio para fichas nuevas: se toman primero hasta la mitad
+// del lote en trabajos "detalle", y el resto del lote va por prioridad, sea
+// del tipo que sea. Sin fichas nuevas pendientes, el lote entero va por
+// prioridad. Asi una pasada nunca se va entera en refrescos mientras quede
+// algo por bajar, y lo que cierra hoy sigue teniendo al menos medio lote.
+// ---------------------------------------------------------------------------
+
+export interface RepartoLote {
+  /** Trabajos "detalle" que se toman aparte, antes que la prioridad. */
+  nuevas: number;
+  /** Huecos que quedan para lo mas urgente de cualquier tipo. */
+  libres: number;
+  motivo: string;
+}
+
+export function repartirLote(
+  cuantos: number,
+  pendientes: { detalle?: number },
+  fraccionNuevas = 0.5,
+): RepartoLote {
+  const tamano = Math.max(0, Math.floor(cuantos));
+  const sinBajar = Math.max(0, pendientes.detalle ?? 0);
+  if (tamano === 0 || sinBajar === 0) {
+    return { nuevas: 0, libres: tamano, motivo: "No hay fichas nuevas: el lote entero va por prioridad" };
+  }
+  const reserva = Math.min(tamano, Math.ceil(tamano * fraccionNuevas));
+  const nuevas = Math.min(reserva, sinBajar);
+  return {
+    nuevas,
+    libres: tamano - nuevas,
+    motivo: `${nuevas} de ${tamano} reservados para fichas nuevas (${sinBajar} sin bajar)`,
+  };
+}
+
+/**
+ * Orden en que se atiende un lote: alternando lo urgente y lo nuevo, para
+ * que si la pasada se agota a mitad de lote no se queden fuera siempre los
+ * mismos. Lo que sobra de la lista mas larga va al final.
+ */
+export function intercalar<T>(urgentes: T[], nuevas: T[]): T[] {
+  const r: T[] = [];
+  const n = Math.max(urgentes.length, nuevas.length);
+  for (let i = 0; i < n; i++) {
+    const u = urgentes[i];
+    const v = nuevas[i];
+    if (u !== undefined) r.push(u);
+    if (v !== undefined) r.push(v);
+  }
+  return r;
+}

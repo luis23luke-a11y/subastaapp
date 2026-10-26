@@ -83,6 +83,34 @@ export interface ResultadoDetalle {
   crudo?: Crudo[];
 }
 
+/**
+ * Lo que cambia de una subasta ya bajada: su estado, sus fechas y las pujas
+ * de cada lote. Nada mas. Los bienes, las cargas, la autoridad y los importes
+ * no cambian una vez publicada la subasta, y no volver a pedirlos es lo que
+ * hace que un refresco cueste dos peticiones al portal en vez de cuatro o
+ * cinco. Que sea un tipo aparte, y no una SubastaBruta a medias, es lo que
+ * impide que un refresco pise con nulos lo que ya estaba guardado.
+ */
+export interface LoteRefrescado {
+  numero: number;
+  estado?: Estado | null;
+  numPujas?: number | null;
+  pujaActual?: number | null;
+}
+
+export interface SubastaRefrescada {
+  idExterno: string;
+  estado: Estado;
+  fechaInicio?: string | null;
+  fechaFin?: string | null;
+  lotes: LoteRefrescado[];
+}
+
+export interface ResultadoRefresco {
+  subasta: SubastaRefrescada;
+  crudo?: Crudo[];
+}
+
 export interface Adaptador {
   /** Se guarda en subasta.fuente y forma la clave unica con el id externo. */
   readonly nombre: string;
@@ -92,4 +120,11 @@ export interface Adaptador {
   descubrir(desde: Date): AsyncIterable<string>;
   /** Detalle completo de una subasta. null si ya no existe en el origen. */
   detalle(idExterno: string): Promise<ResultadoDetalle | null>;
+  /**
+   * Solo lo que cambia de una subasta ya bajada (estado, fechas y pujas), con
+   * menos peticiones que el detalle completo. Opcional: si la fuente no lo
+   * ofrece, el worker refresca con `detalle`. null si ya no existe en el
+   * origen.
+   */
+  detalleLigero?(idExterno: string): Promise<ResultadoRefresco | null>;
 }

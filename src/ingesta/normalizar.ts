@@ -13,9 +13,60 @@
 //     extraido, porque un dato publicado vale mas que uno deducido.
 // ---------------------------------------------------------------------------
 
+import type { PoolClient as Cliente } from "pg";
 import { pool } from "@/lib/db";
 import { extraerDeTexto } from "@/enriquecimiento/extraer";
-import type { SubastaBruta } from "@/ingesta/adaptador";
+import type { SubastaBruta, SubastaRefrescada } from "@/ingesta/adaptador";
+
+interface UltimoSnapshot {
+  id: number;
+  snap_estado: string | null;
+  snap_pujas: number | null;
+  snap_puja: number | null;
+}
+
+/** El lote y su ultimo snapshot, para no escribir otro cuando nada cambio. */
+async function ultimoSnapshot(
+  cliente: Cliente, subastaId: number, numero: number,
+): Promise<UltimoSnapshot | undefined> {
+  // A 12.000 subastas refrescadas al dia, un snapshot por pasada son millones
+  // de filas identicas al año.
+  const r = await cliente.query<UltimoSnapshot>(
+    `select l.id,
+            s.estado::text as snap_estado, s.num_pujas as snap_pujas,
+            s.puja_actual as snap_puja
+     from lote l
+     left join lateral (
+       select estado, num_pujas, puja_actual from lote_snapshot
+       where lote_id = l.id order by momento desc limit 1
+     ) s on true
+     where l.subasta_id = $1 and l.numero = $2`,
+    [subastaId, numero],
+  );
+  return r.rows[0];
+}
+
+/** Escribe un snapshot solo si es el primero del lote o si algo ha cambiado. */
+async function anotarSnapshot(
+  cliente: Cliente,
+  loteId: number,
+  anterior: UltimoSnapshot | undefined,
+  nuevo: { estado: string; numPujas: number | null; pujaActual: number | null },
+): Promise<boolean> {
+  const hayCambio =
+    !anterior ||
+    anterior.snap_estado === null ||
+    anterior.snap_estado !== nuevo.estado ||
+    anterior.snap_pujas !== nuevo.numPujas ||
+    Number(anterior.snap_puja) !== Number(nuevo.pujaActual);
+  if (!hayCambio) return false;
+  await cliente.query(
+    `insert into lote_snapshot (lote_id, estado, num_pujas, puja_actual)
+     values ($1,$2,$3,$4)`,
+    [loteId, nuevo.estado, nuevo.numPujas, nuevo.pujaActual],
+  );
+  return true;
+}
 
 export interface ResumenGuardado {
   subastaId: number;
@@ -61,24 +112,7 @@ export async function guardarSubasta(
     let snapshots = 0;
 
     for (const l of bruta.lotes) {
-      // Ultimo snapshot conocido, para no escribir uno nuevo cuando nada ha
-      // cambiado: a 12.000 subastas refrescadas al dia, un snapshot por pasada
-      // son millones de filas identicas al año.
-      const previo = await cliente.query<{
-        id: number; estado: string | null;
-        snap_estado: string | null; snap_pujas: number | null; snap_puja: number | null;
-      }>(
-        `select l.id, l.estado::text as estado,
-                s.estado::text as snap_estado, s.num_pujas as snap_pujas,
-                s.puja_actual as snap_puja
-         from lote l
-         left join lateral (
-           select estado, num_pujas, puja_actual from lote_snapshot
-           where lote_id = l.id order by momento desc limit 1
-         ) s on true
-         where l.subasta_id = $1 and l.numero = $2`,
-        [subastaId, l.numero],
-      );
+      const anterior = await ultimoSnapshot(cliente, subastaId, l.numero);
 
       // Lo que el boletin dice en prosa, convertido en campos.
       const extraido = extraerDeTexto(l.cargasTexto);
@@ -124,24 +158,11 @@ export async function guardarSubasta(
       const loteId = lote.rows[0]!.id;
 
       // Snapshot solo si es la primera vez que lo vemos o si algo ha cambiado.
-      const anterior = previo.rows[0];
-      const estadoNuevo = l.estado ?? bruta.estado;
-      const pujasNuevas = l.numPujas ?? null;
-      const pujaNueva = l.pujaActual ?? null;
-      const hayCambio =
-        !anterior ||
-        anterior.snap_estado === null ||
-        anterior.snap_estado !== estadoNuevo ||
-        anterior.snap_pujas !== pujasNuevas ||
-        Number(anterior.snap_puja) !== Number(pujaNueva);
-      if (hayCambio) {
-        await cliente.query(
-          `insert into lote_snapshot (lote_id, estado, num_pujas, puja_actual)
-           values ($1,$2,$3,$4)`,
-          [loteId, estadoNuevo, pujasNuevas, pujaNueva],
-        );
-        snapshots++;
-      }
+      if (await anotarSnapshot(cliente, loteId, anterior, {
+        estado: l.estado ?? bruta.estado,
+        numPujas: l.numPujas ?? null,
+        pujaActual: l.pujaActual ?? null,
+      })) snapshots++;
 
       let orden = 1;
       for (const b of l.bienes) {
@@ -201,6 +222,75 @@ export async function guardarSubasta(
 
     await cliente.query("commit");
     return { subastaId, nueva, lotes: bruta.lotes.length, bienes, snapshots };
+  } catch (err) {
+    await cliente.query("rollback");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
+
+export interface ResumenRefresco {
+  subastaId: number;
+  lotes: number;
+  snapshots: number;
+}
+
+/**
+ * Escribe lo que trae un refresco ligero: el estado y las fechas de la
+ * subasta, el estado de cada lote y, si algo cambio, su snapshot. Ninguna
+ * otra columna aparece aqui a proposito: los bienes, las cargas, los importes
+ * y el `bruto` completo son de `guardarSubasta`, y un refresco que no los ha
+ * pedido no puede pisarlos. Devuelve null si la subasta no esta en la base
+ * (un refresco programado para una ficha que nunca llego a guardarse), y
+ * entonces el worker la baja entera.
+ */
+export async function refrescarSubasta(
+  fuente: string,
+  refresco: SubastaRefrescada,
+): Promise<ResumenRefresco | null> {
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("begin");
+
+    const sub = await cliente.query<{ id: number }>(
+      `update subasta set
+         estado = $3::estado_subasta,
+         fecha_inicio = coalesce($4::timestamptz, fecha_inicio),
+         fecha_fin = coalesce($5::timestamptz, fecha_fin),
+         visto_ultima_vez = now()
+       where fuente = $1 and id_externo = $2
+       returning id`,
+      [fuente, refresco.idExterno, refresco.estado,
+       refresco.fechaInicio ?? null, refresco.fechaFin ?? null],
+    );
+    const subastaId = sub.rows[0]?.id;
+    if (subastaId == null) {
+      await cliente.query("rollback");
+      return null;
+    }
+
+    let lotes = 0;
+    let snapshots = 0;
+    for (const l of refresco.lotes) {
+      const anterior = await ultimoSnapshot(cliente, subastaId, l.numero);
+      // Un lote que no esta en la base no se inventa aqui: sin sus importes
+      // y sus bienes seria una fila vacia. Lo recogera el detalle completo.
+      if (!anterior) continue;
+      const estado = l.estado ?? refresco.estado;
+      await cliente.query(
+        `update lote set estado = $2::estado_subasta
+         where id = $1 and estado is distinct from $2::estado_subasta`,
+        [anterior.id, estado],
+      );
+      lotes++;
+      if (await anotarSnapshot(cliente, anterior.id, anterior, {
+        estado, numPujas: l.numPujas ?? null, pujaActual: l.pujaActual ?? null,
+      })) snapshots++;
+    }
+
+    await cliente.query("commit");
+    return { subastaId, lotes, snapshots };
   } catch (err) {
     await cliente.query("rollback");
     throw err;

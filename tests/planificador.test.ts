@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  esperaReintento, fusionarEncolado, merecePena, planificarRefresco,
+  esperaReintento, fusionarEncolado, intercalar, merecePena, planificarRefresco, repartirLote,
   type FilaEnCola, type PeticionEncolar,
 } from "../src/ingesta/planificador";
 
@@ -121,4 +121,41 @@ test("sin fila previa, en los dos modos, la fila nueva entra tal cual", () => {
     assert.deepEqual(fusionarEncolado(null, peticion(1, 7), modo),
       { estado: "pendiente", prioridad: 7, ejecutarTras: enHoras(1), intentos: 0 });
   }
+});
+
+// --- Reparto del lote entre fichas nuevas y lo urgente -----------------------
+
+test("con fichas sin bajar, la mitad del lote se reserva para ellas", () => {
+  // Lo que paso en produccion el 26 de octubre de 2026: 234 refrescos de
+  // subastas que cerraban ese dia, con prioridad 10, se llevaban la pasada
+  // entera y las 999 fichas nuevas (prioridad 100) no avanzaban.
+  const r = repartirLote(20, { detalle: 999 });
+  assert.equal(r.nuevas, 10);
+  assert.equal(r.libres, 10);
+  assert.equal(r.nuevas + r.libres, 20, "el lote no crece ni mengua");
+});
+
+test("sin fichas sin bajar, el lote entero va por prioridad", () => {
+  assert.deepEqual(repartirLote(20, {}).nuevas, 0);
+  assert.equal(repartirLote(20, { detalle: 0 }).libres, 20);
+});
+
+test("si quedan pocas fichas nuevas, no se reserva mas sitio del que hace falta", () => {
+  const r = repartirLote(20, { detalle: 3 });
+  assert.equal(r.nuevas, 3);
+  assert.equal(r.libres, 17, "los huecos que sobran vuelven a lo urgente");
+});
+
+test("la reserva redondea hacia arriba y se puede cambiar", () => {
+  assert.equal(repartirLote(5, { detalle: 100 }).nuevas, 3);
+  assert.equal(repartirLote(20, { detalle: 100 }, 0.25).nuevas, 5);
+  assert.equal(repartirLote(20, { detalle: 100 }, 1).libres, 0);
+  assert.deepEqual(repartirLote(0, { detalle: 100 }), { ...repartirLote(0, { detalle: 100 }), nuevas: 0, libres: 0 });
+});
+
+test("el lote se atiende alternando lo urgente y lo nuevo", () => {
+  assert.deepEqual(intercalar(["u1", "u2", "u3"], ["n1"]), ["u1", "n1", "u2", "u3"]);
+  assert.deepEqual(intercalar([], ["n1", "n2"]), ["n1", "n2"]);
+  assert.deepEqual(intercalar(["u1"], []), ["u1"]);
+  assert.deepEqual(intercalar<string>([], []), []);
 });

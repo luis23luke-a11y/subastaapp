@@ -16,12 +16,12 @@
 // ---------------------------------------------------------------------------
 
 import { crearLimitador } from "@/ingesta/limitador";
-import { planificarRefresco } from "@/ingesta/planificador";
+import { intercalar, planificarRefresco, repartirLote } from "@/ingesta/planificador";
 import {
-  abrirEjecucion, cerrarEjecucion, completar, encolar, estadoCola,
-  fallar, guardarCrudo, rescatar, tomar, type Trabajo,
+  abrirEjecucion, cerrarEjecucion, completar, devolver, encolar, encolarVarios,
+  estadoCola, fallar, guardarCrudo, pendientesPorTipo, rescatar, tomar, type Trabajo,
 } from "@/ingesta/cola";
-import { guardarSubasta } from "@/ingesta/normalizar";
+import { guardarSubasta, refrescarSubasta } from "@/ingesta/normalizar";
 import { bienesPendientes, enriquecerBien } from "@/enriquecimiento/enriquecer";
 import type { Adaptador } from "@/ingesta/adaptador";
 
@@ -82,13 +82,19 @@ export async function ejecutarWorker(
     }
 
     while (Date.now() < limite) {
-      const trabajos = await tomar(adaptador.nombre, lote);
+      // Cada lote reserva sitio para fichas nuevas; el resto va por prioridad.
+      // La regla y el porque, en `repartirLote`.
+      const reparto = repartirLote(lote, await pendientesPorTipo(adaptador.nombre));
+      const nuevas = await tomar(adaptador.nombre, reparto.nuevas, ["detalle"]);
+      const urgentes = await tomar(adaptador.nombre, reparto.libres);
+      const trabajos = intercalar(urgentes, nuevas);
       if (trabajos.length === 0) break;
 
       for (const trabajo of trabajos) {
         if (Date.now() >= limite) {
-          // No se pierde: vuelve a la cola para la siguiente pasada.
-          await fallar(trabajo, new Error("Se agoto el tiempo de la pasada"));
+          // No se pierde ni cuenta como intento: vuelve a la cola tal cual
+          // para la siguiente pasada.
+          await devolver(trabajo.id);
           r.agotadoElTiempo = true;
           continue;
         }
@@ -115,26 +121,32 @@ export async function ejecutarWorker(
   }
 }
 
-async function atender(
-  adaptador: Adaptador,
-  trabajo: Trabajo,
-  ctx: {
-    desde: Date;
-    limitador: { turno(): Promise<void>; hechas(): number };
-    resumen: ResumenWorker;
-    registrar: (l: string) => void;
-  },
-): Promise<void> {
+interface Contexto {
+  desde: Date;
+  limitador: { turno(): Promise<void>; hechas(): number };
+  resumen: ResumenWorker;
+  registrar: (l: string) => void;
+}
+
+async function atender(adaptador: Adaptador, trabajo: Trabajo, ctx: Contexto): Promise<void> {
   if (trabajo.tipo === "descubrir") {
     await ctx.limitador.turno();
+    // Modo "adelantar" (el de por defecto): una ficha ya bajada no se vuelve
+    // a encolar; de volver a mirarla se ocupa su trabajo "refrescar". Se
+    // encolan por tandas en una sola sentencia, no una a una: con 1.225
+    // fichas, una ida y vuelta por cada una eran cuatro minutos de pasada.
+    let tanda: string[] = [];
+    const volcar = async () => {
+      if (tanda.length === 0) return;
+      await encolarVarios({ fuente: adaptador.nombre, tipo: "detalle", referencias: tanda, prioridad: 100 });
+      ctx.resumen.descubiertas += tanda.length;
+      tanda = [];
+    };
     for await (const id of adaptador.descubrir(ctx.desde)) {
-      // Modo "adelantar" (el de por defecto): una ficha ya bajada no se vuelve
-      // a encolar; de volver a mirarla se ocupa su trabajo "refrescar".
-      await encolar({
-        fuente: adaptador.nombre, tipo: "detalle", referencia: id, prioridad: 100,
-      });
-      ctx.resumen.descubiertas++;
+      tanda.push(id);
+      if (tanda.length >= 500) await volcar();
     }
+    await volcar();
     ctx.registrar(`  descubiertas ${ctx.resumen.descubiertas} subastas`);
     return;
   }
@@ -152,6 +164,36 @@ async function atender(
   const id = trabajo.referencia;
   if (!id) throw new Error(`Trabajo ${trabajo.tipo} sin referencia`);
 
+  // Un refresco solo necesita lo que cambia (estado, fechas, pujas), y la
+  // fuente puede darlo con menos peticiones que la ficha entera. Si no lo
+  // ofrece, o la subasta no estaba en la base, se baja entera.
+  if (trabajo.tipo === "refrescar" && adaptador.detalleLigero) {
+    const hecho = await refrescarLigero(adaptador, id, ctx);
+    if (hecho) return;
+  }
+  await bajarEntera(adaptador, id, ctx);
+}
+
+/** Refresco en pocas peticiones. false si hay que bajar la ficha entera. */
+async function refrescarLigero(adaptador: Adaptador, id: string, ctx: Contexto): Promise<boolean> {
+  await ctx.limitador.turno();
+  const resultado = await adaptador.detalleLigero!(id);
+  if (!resultado) {
+    ctx.registrar(`  ${id} ya no esta en el origen; se deja de refrescar`);
+    return true;
+  }
+  if (resultado.crudo?.length) await guardarCrudo(adaptador.nombre, id, resultado.crudo);
+
+  const guardado = await refrescarSubasta(adaptador.nombre, resultado.subasta);
+  if (!guardado) return false;
+  ctx.resumen.procesadas++;
+  ctx.resumen.actualizadas++;
+  await programarRefresco(adaptador, id, resultado.subasta.fechaFin ?? null, resultado.subasta.estado);
+  return true;
+}
+
+/** La ficha entera: crudo, normalizacion, bienes por enriquecer y refresco. */
+async function bajarEntera(adaptador: Adaptador, id: string, ctx: Contexto): Promise<void> {
   await ctx.limitador.turno();
   const resultado = await adaptador.detalle(id);
 
@@ -171,27 +213,30 @@ async function atender(
   if (guardado.nueva) ctx.resumen.nuevas++;
   else ctx.resumen.actualizadas++;
 
-  // Los bienes nuevos o aun sin localizar entran en la cola de enriquecimiento.
-  for (const bienId of await bienesPendientes(50)) {
-    await encolar({
-      fuente: adaptador.nombre, tipo: "enriquecer", referencia: String(bienId),
-      prioridad: 400,
+  // Los bienes nuevos o aun sin localizar entran en la cola de enriquecimiento,
+  // todos en una sentencia: eran hasta 50 idas y vueltas por ficha.
+  const bienes = await bienesPendientes(50);
+  if (bienes.length > 0) {
+    await encolarVarios({
+      fuente: adaptador.nombre, tipo: "enriquecer", referencias: bienes.map(String), prioridad: 400,
     });
   }
 
-  const plan = planificarRefresco(
-    resultado.subasta.fechaFin ? new Date(resultado.subasta.fechaFin) : null,
-    resultado.subasta.estado,
-  );
-  if (plan.proxima) {
-    // "programar": la fecha nueva manda. Cuando este trabajo es el propio
-    // refresco, la fila que se actualiza es la suya, que esta en 'ejecutando';
-    // queda en 'pendiente' para la fecha siguiente y `completar` ya no la toca.
-    await encolar({
-      fuente: adaptador.nombre, tipo: "refrescar", referencia: id,
-      prioridad: plan.prioridad, ejecutarTras: plan.proxima, modo: "programar",
-    });
-  }
+  await programarRefresco(adaptador, id, resultado.subasta.fechaFin ?? null, resultado.subasta.estado);
+}
+
+async function programarRefresco(
+  adaptador: Adaptador, id: string, fechaFin: string | null, estado: string,
+): Promise<void> {
+  const plan = planificarRefresco(fechaFin ? new Date(fechaFin) : null, estado);
+  if (!plan.proxima) return;
+  // "programar": la fecha nueva manda. Cuando este trabajo es el propio
+  // refresco, la fila que se actualiza es la suya, que esta en 'ejecutando';
+  // queda en 'pendiente' para la fecha siguiente y `completar` ya no la toca.
+  await encolar({
+    fuente: adaptador.nombre, tipo: "refrescar", referencia: id,
+    prioridad: plan.prioridad, ejecutarTras: plan.proxima, modo: "programar",
+  });
 }
 
 export async function resumenCola(fuente: string): Promise<string> {
