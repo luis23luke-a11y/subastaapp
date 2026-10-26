@@ -98,3 +98,30 @@ export function partirDireccion(entrada: string | null | undefined): DireccionPa
 
   return { sigla, nombre, numero };
 }
+
+// ---------------------------------------------------------------------------
+// Referencias catastrales tal y como las escriben los juzgados.
+//
+// De 888 referencias en anuncios reales (26 de octubre de 2026), 117 no
+// tenian ni 14 ni 20 caracteres: con un punto final ("0295605QA6609E0001EZ."),
+// con barras o guiones entre los bloques ("1649914/DF3814H/0021/QO"), con un
+// texto que no es una referencia ("NOCONSTA", "Nocoordinada", "NO") o con un
+// caracter de menos, que no tiene arreglo. Preguntarle al Catastro por
+// "NOCONSTA" es una peticion perdida y un fallo que esconde el fallo real.
+// ---------------------------------------------------------------------------
+
+/**
+ * Deja una referencia catastral en los 14 (parcela) o 20 (inmueble)
+ * caracteres que entiende el Catastro, o null si lo que hay no es una
+ * referencia. No se toca el dato de origen: esto solo decide con que se
+ * pregunta.
+ */
+export function limpiarReferenciaCatastral(entrada: string | null | undefined): string | null {
+  if (!entrada) return null;
+  const limpia = entrada.toUpperCase().replace(/[^0-9A-Z]/g, "");
+  if (limpia.length !== 14 && limpia.length !== 20) return null;
+  // Una referencia de verdad lleva digitos y letras mezclados; "NOCOORDINADO"
+  // o un numero de finca registral no.
+  if (!/\d/.test(limpia) || !/[A-Z]/.test(limpia)) return null;
+  return limpia;
+}

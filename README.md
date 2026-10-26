@@ -110,7 +110,7 @@ así que encolar algo que ya estaba es fundir la petición con la fila vieja. Ha
 **dos modos de encolar**, y la regla es la de `fusionarEncolado` en
 `src/ingesta/planificador.ts`, con sus pruebas:
 
-| Si la fila ya existe y está… | `adelantar` (descubrimiento, bienes por enriquecer) | `programar` (un refresco que se reprograma) |
+| Si la fila ya existe y está… | `adelantar` (el descubrimiento) | `programar` (un refresco que se reprograma; un bien que toca volver a enriquecer) |
 |---|---|---|
 | hecha | no se toca | vuelve a pendiente con la fecha nueva |
 | en marcha | no se toca | queda pendiente para la fecha nueva; `completar` ya no la cierra |
@@ -134,19 +134,30 @@ subasta que cierra hoy tiene prioridad 10 frente al 100 de una ficha nueva.
 Con una subasta que cierra hoy es lo que se quiere; con doscientas, la pasada
 entera se va en refrescarlas y las mil fichas que faltan por bajar no avanzan.
 Pasó el 26 de octubre de 2026: 36 actualizadas, 0 nuevas y 999 fichas sin
-bajar al cabo de una pasada. Desde entonces hay tres reglas, las dos primeras
-en `src/ingesta/planificador.ts` como funciones puras con pruebas:
+bajar al cabo de una pasada. Y lo mismo, más despacio, con el enriquecimiento:
+los trabajos `enriquecer` tienen prioridad 400, la más baja, y como los
+refrescos se reprograman a sí mismos sin fin siempre había alguno listo antes;
+dos días de pasadas y 1.559 bienes reales sin que ninguno pasara por el
+Catastro, con el mapa diciendo «0 lotes localizados». Desde entonces hay tres
+reglas, las dos primeras en `src/ingesta/planificador.ts` como funciones puras
+con pruebas:
 
-- **Cada lote de trabajos reserva sitio para fichas nuevas** (`repartirLote`).
-  El worker toma los trabajos de veinte en veinte; mientras haya fichas sin
-  bajar, diez de cada veinte son trabajos `detalle` y los otros diez van por
-  prioridad, sean del tipo que sean. Sin fichas nuevas pendientes, el lote
-  entero va por prioridad. Así una pasada nunca se va entera en refrescos
-  mientras quede algo por bajar, y lo que cierra hoy sigue teniendo medio
-  lote. Dentro del lote se alternan lo urgente y lo nuevo (`intercalar`), para
-  que si el tiempo se agota a mitad de lote no se queden fuera siempre los
-  mismos; los que se quedan fuera vuelven a la cola tal cual, sin que cuente
-  como intento.
+- **Cada lote de trabajos reserva sitio por tipo** (`repartirLote`). El worker
+  toma los trabajos de veinte en veinte; mientras haya fichas sin bajar, diez
+  de cada veinte son trabajos `detalle`; mientras haya bienes por enriquecer,
+  cinco de cada veinte son trabajos `enriquecer`; y el resto va por
+  prioridad, sea del tipo que sea. Un hueco reservado que no se llena vuelve a
+  lo urgente, y sin nada que bajar ni enriquecer el lote entero va por
+  prioridad. Así una pasada nunca se va entera en refrescos mientras quede
+  algo por bajar o por localizar, y lo que cierra hoy sigue teniendo al menos
+  un cuarto del lote. La reserva de enriquecer es un cuarto y no más porque
+  un bien son una a tres consultas al Catastro a 350 ms, mucho menos que una
+  ficha (cuatro o cinco páginas del portal a segundo y medio): cinco por lote
+  dan varias decenas de bienes por pasada sin quitarle al portal casi tiempo.
+  Dentro del lote se alternan lo urgente, lo nuevo y lo que hay que
+  enriquecer (`intercalar`), para que si el tiempo se agota a mitad de lote no
+  se queden fuera siempre los mismos; los que se quedan fuera vuelven a la
+  cola tal cual, sin que cuente como intento.
 - **Un refresco cuesta la mitad que una ficha nueva.** De una subasta ya
   bajada solo cambian el estado, las fechas y las pujas, y eso está en dos
   pestañas del portal: la general y la de pujas. El adaptador ofrece un
@@ -165,6 +176,21 @@ en `src/ingesta/planificador.ts` como funciones puras con pruebas:
   en cola, también. Desde el runner de GitHub (Estados Unidos) a Neon
   (Fráncfort) cada ida y vuelta son más de cien milisegundos, y el
   descubrimiento solo gastaba cuatro minutos de cada pasada en encolar.
+
+Y una cuarta, sobre **cómo se alimenta la cola de enriquecer**
+(`encolarBienesPendientes`, en `src/enriquecimiento/enriquecer.ts`). La vista
+`v_bien_por_enriquecer` dice qué bienes se podrían enriquecer mejor: los que
+nunca se han mirado, los que se quedaron en el centro del municipio o sin
+localizar, los que no tienen superficie y los que llevan 180 días sin revisar.
+Pero «se podría mejorar» no es «hay que volver a intentarlo ya»: un bien cuya
+dirección el Catastro no entiende sigue en la vista después de enriquecerlo.
+El worker encolaba «los 50 primeros de la vista» tras cada ficha, que eran
+siempre los mismos 50, y los otros 1.500 nunca entraban. Ahora una sola
+sentencia cruza la vista con la tabla de trabajos y deja fuera lo que ya está
+en cola o en marcha y lo que se intentó hace menos de 30 días; primero van los
+que nunca se han enriquecido y luego los que llevan más tiempo sin revisar.
+Se ejecuta al empezar la pasada y tras cada ficha nueva, y solo para bienes de
+la fuente que se está ingiriendo: los de muestra no son direcciones reales.
 
 Dos cosas que parecen detalles y no lo son. El **contenido crudo** se guarda
 antes de parsearlo, así que el día que mejoremos la extracción de cargas se
@@ -223,10 +249,72 @@ peor que no pintar nada, porque el usuario decide mirando el mapa. Por eso la
 ficha y el buscador muestran la precisión, y el mapa colorea distinto los
 puntos aproximados.
 
+La referencia catastral del anuncio se limpia antes de preguntar
+(`limpiarReferenciaCatastral`, en `src/enriquecimiento/direccion.ts`, con
+pruebas): de 888 referencias reales, 117 no tenían ni 14 ni 20 caracteres,
+con un punto final («0295605QA6609E0001EZ.»), con barras o guiones entre los
+bloques («1649914/DF3814H/0021/QO»), con un texto que no es una referencia
+(«NOCONSTA», «Nocoordinada», 28 veces) o con un carácter de menos, que no
+tiene arreglo. Las dos primeras formas se recuperan quitando lo que no es
+letra ni dígito; el resto pasa directamente al intento por dirección en vez de
+gastar una petición del Catastro en un error seguro. El dato de origen no se
+toca: la limpieza solo decide con qué se pregunta.
+
 Una referencia de parcela de 14 caracteres no tiene superficie propia: devuelve
 la lista de inmuebles que contiene. Si solo hay uno, que es el caso de una casa
 unifamiliar, se usan sus datos; con varios no se elige ninguno, porque un
 edificio de siete pisos no tiene una superficie.
+
+### Qué sale con datos reales
+
+Hasta el 26 de octubre de 2026 el enriquecimiento no había corrido nunca en
+producción: los trabajos `enriquecer` tienen la prioridad más baja de la cola
+y los refrescos no les dejaban turno («Cómo se reparte una pasada» cuenta el
+arreglo). La primera pasada real con turno garantizado (run 40320604689,
+desde la rama, 14 minutos) enriqueció 34 bienes además de bajar 79 fichas
+nuevas y refrescar 39; 30 eran reales y 4, de muestra, arrastrados de la cola
+vieja. Lo que salió de los 30 reales:
+
+| | Bienes | Con superficie | Con año | Valorados |
+|---|---|---|---|---|
+| `catastral` (referencia del anuncio) | 28 | 28 | 22 | 4 |
+| `portal` (dirección consultada al Catastro) | 0 | | | |
+| `municipio` (centro del municipio) | 1 | 0 | | 0 |
+| `ninguna` | 1 | 0 | | 0 |
+
+Y seis consultas más fallaron con «fetch failed» del Catastro desde el runner
+de GitHub; se reintentan solas con espera creciente, y desde entonces el error
+dice la causa (reset, timeout, DNS). Cuatro lecturas de esta primera muestra,
+pequeña pero ya real:
+
+- **Con referencia catastral, el Catastro acierta siempre.** Las 28 fueron a
+  `catastral` con superficie, y la cola tomó primero los bienes con
+  referencia porque son los de id más bajo. De los 1.878 bienes reales, 1.056
+  traen referencia, así que algo más de la mitad de la base acabará con
+  coordenadas exactas sin más trabajo.
+- **La valoración casi nunca sale**, 4 de 28, por dos motivos distintos. Nueve
+  eran suelo o rústica, que no se valoran por metro construido a propósito
+  (seis parcelas agrarias salen con 0 m² de uso «Agrario»). Y el resto son
+  pueblos que no están en la tabla de municipios de `src/datos/municipios.ts`
+  (Verín, Cerdido, Salem, Castilléjar, Cuéllar…): sin índice de zona,
+  `valorar` devuelve null. Hasta que haya índices reales por código postal, la
+  valoración solo existirá en las ciudades de esa tabla.
+- **Las direcciones son el verdadero cuello de botella**, y esta pasada aún
+  no las ha puesto a prueba. De los 822 bienes sin referencia, 161 no tienen
+  ni un dígito en la dirección y 68 dicen «s/n»; muchas vienen ya en el
+  formato del Catastro con el 0 como «sin número» («CL CHARCO 0», «UR PLAYA
+  SERENA 0 E»), que `partirDireccion` toma como número 0, o con texto detrás
+  del número que el patrón no reconoce. El único `ninguna` de la pasada es de
+  esos («UR PLAYA SERENA 0 E», Roquetas de Mar): no llegó ni al centro del
+  municipio porque Roquetas no está en la tabla de municipios.
+- **País Vasco y Navarra** salen como `municipio` (Bilbao, «CL LEZEAGA 6»):
+  el Catastro estatal no los cubre, como se explica abajo. Son 24 bienes de
+  1.878.
+
+`npm run db:estado` enseña este desglose al día, por precisión, con cuántos
+bienes siguen pendientes y cuántos esperan en la cola. Al ritmo medido, entre
+treinta y cuarenta bienes por pasada mientras queden fichas por bajar y más
+cuando no, los 1.848 pendientes tardan unas doce horas de cadena.
 
 ### Dos límites que conviene saber
 
@@ -375,6 +463,7 @@ de Postgres para la siguiente. Lo medido en producción:
 | Descubrimiento (1.225 subastas) | unos 6 minutos: encolaba una a una | 7 segundos: una sentencia por tanda de 500 |
 | Fichas por pasada | 36 (0 nuevas, 36 actualizadas) | 116 (77 nuevas, 39 actualizadas) |
 | Peticiones por refresco | 4 o 5 | 2 |
+| Bienes enriquecidos por pasada | 0 (nunca les tocaba el turno) | 34, de 40 intentados |
 
 Cada ficha nueva son cuatro o cinco páginas del portal a segundo y medio,
 más las escrituras en la base, que desde el runner de GitHub (Estados Unidos)
@@ -395,7 +484,12 @@ horario queda solo de respaldo para volver a arrancar la cadena si se corta.
 Antes de lanzar la siguiente, la pasada mira si ya hay otra en cola o en
 marcha y, si la hay, no lanza nada: así nunca corren dos cadenas a la vez
 y el ritmo de peticiones al portal no se dobla. Una prueba desde una rama no
-encadena nada, solo las pasadas de `main`.
+encadena nada, solo las pasadas de `main`. Ojo con eso: la prueba entra en el
+mismo grupo de concurrencia, así que la pasada de `main` que la vea en cola
+tampoco encadena, y al acabar la prueba la cadena está parada hasta que el
+horario de respaldo la rearranque. Tras probar desde una rama, mirar
+`gh run list --workflow=ingesta-boe.yml` y, si no hay nada en marcha ni en
+cola, lanzar `gh workflow run ingesta-boe.yml --ref main`.
 
 Para parar la ingesta: GitHub → Actions → «Ingesta BOE» → «Disable workflow».
 Para volver a arrancarla: habilitarlo y pulsar «Run workflow», o esperar al
@@ -513,6 +607,15 @@ contando en `db:estado`, que por eso ahora desglosa por fuente.
 - Conectar un modelo real al revisor y medir su acierto contra las reglas.
 - Índices de precios reales para la valoración, en lugar de la tabla provisional.
 - Catastros forales de País Vasco y Navarra.
+- Direcciones en el formato del Catastro en `partirDireccion`: el 0 como «sin
+  número» («CL CHARCO 0»), «s/n», y el texto que sigue al número («UR PLAYA
+  SERENA 0 E», «AV LAZA DE 82 +1 3»). Son la mayoría de los 822 bienes sin
+  referencia catastral, y hoy acaban en `municipio` o `ninguna`.
+- Ampliar la tabla de municipios de `src/datos/municipios.ts` (o sustituirla
+  por el nomenclátor del INE con centroides): sin ella un pueblo que no está
+  no tiene ni centro para el mapa ni índice para la valoración. En la primera
+  pasada real, 24 de 28 bienes bien localizados se quedaron sin valoración
+  por esto y por ser suelo o rústica.
 - Alertas por correo y Telegram, incluidas las cancelaciones.
 - Favoritos, informe PDF y pagos.
 - Aviso legal, política de privacidad y revisión de RGPD.

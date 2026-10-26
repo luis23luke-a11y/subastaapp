@@ -123,7 +123,7 @@ test("sin fila previa, en los dos modos, la fila nueva entra tal cual", () => {
   }
 });
 
-// --- Reparto del lote entre fichas nuevas y lo urgente -----------------------
+// --- Reparto del lote entre fichas nuevas, enriquecer y lo urgente ----------
 
 test("con fichas sin bajar, la mitad del lote se reserva para ellas", () => {
   // Lo que paso en produccion el 26 de octubre de 2026: 234 refrescos de
@@ -131,31 +131,58 @@ test("con fichas sin bajar, la mitad del lote se reserva para ellas", () => {
   // entera y las 999 fichas nuevas (prioridad 100) no avanzaban.
   const r = repartirLote(20, { detalle: 999 });
   assert.equal(r.nuevas, 10);
+  assert.equal(r.enriquecer, 0);
   assert.equal(r.libres, 10);
-  assert.equal(r.nuevas + r.libres, 20, "el lote no crece ni mengua");
+  assert.equal(r.nuevas + r.enriquecer + r.libres, 20, "el lote no crece ni mengua");
 });
 
-test("sin fichas sin bajar, el lote entero va por prioridad", () => {
+test("con bienes por enriquecer, un cuarto del lote se reserva para ellos", () => {
+  // Y lo que paso despues: 1.559 bienes reales con prioridad 400 que no se
+  // enriquecian nunca, porque los refrescos (10 a 300) siempre iban antes.
+  const r = repartirLote(20, { detalle: 999, enriquecer: 1559 });
+  assert.equal(r.nuevas, 10);
+  assert.equal(r.enriquecer, 5);
+  assert.equal(r.libres, 5, "lo urgente conserva al menos un cuarto del lote");
+  assert.equal(r.nuevas + r.enriquecer + r.libres, 20);
+
+  // Cuando ya no quedan fichas por bajar, enriquecer sigue con su cuarto y el
+  // resto va por prioridad: no hereda el sitio de las fichas.
+  const sinFichas = repartirLote(20, { enriquecer: 1559 });
+  assert.deepEqual([sinFichas.nuevas, sinFichas.enriquecer, sinFichas.libres], [0, 5, 15]);
+});
+
+test("sin nada que bajar ni enriquecer, el lote entero va por prioridad", () => {
   assert.deepEqual(repartirLote(20, {}).nuevas, 0);
-  assert.equal(repartirLote(20, { detalle: 0 }).libres, 20);
+  assert.equal(repartirLote(20, { detalle: 0, enriquecer: 0 }).libres, 20);
 });
 
-test("si quedan pocas fichas nuevas, no se reserva mas sitio del que hace falta", () => {
-  const r = repartirLote(20, { detalle: 3 });
+test("si quedan pocos pendientes, no se reserva mas sitio del que hace falta", () => {
+  const r = repartirLote(20, { detalle: 3, enriquecer: 2 });
   assert.equal(r.nuevas, 3);
-  assert.equal(r.libres, 17, "los huecos que sobran vuelven a lo urgente");
+  assert.equal(r.enriquecer, 2);
+  assert.equal(r.libres, 15, "los huecos que sobran vuelven a lo urgente");
 });
 
-test("la reserva redondea hacia arriba y se puede cambiar", () => {
-  assert.equal(repartirLote(5, { detalle: 100 }).nuevas, 3);
-  assert.equal(repartirLote(20, { detalle: 100 }, 0.25).nuevas, 5);
-  assert.equal(repartirLote(20, { detalle: 100 }, 1).libres, 0);
-  assert.deepEqual(repartirLote(0, { detalle: 100 }), { ...repartirLote(0, { detalle: 100 }), nuevas: 0, libres: 0 });
+test("las fracciones redondean y se pueden cambiar", () => {
+  // Fichas hacia arriba, enriquecer hacia abajo: en un lote pequeño siempre
+  // queda algun hueco para lo urgente.
+  assert.deepEqual(repartirLote(5, { detalle: 100, enriquecer: 100 }), {
+    ...repartirLote(5, { detalle: 100, enriquecer: 100 }), nuevas: 3, enriquecer: 1, libres: 1,
+  });
+  assert.equal(repartirLote(20, { detalle: 100 }, { nuevas: 0.25 }).nuevas, 5);
+  assert.equal(repartirLote(20, { enriquecer: 100 }, { enriquecer: 0.5 }).enriquecer, 10);
+  // Las reservas nunca suman mas que el lote.
+  const todo = repartirLote(20, { detalle: 100, enriquecer: 100 }, { nuevas: 1, enriquecer: 1 });
+  assert.deepEqual([todo.nuevas, todo.enriquecer, todo.libres], [20, 0, 0]);
+  const vacio = repartirLote(0, { detalle: 100, enriquecer: 100 });
+  assert.deepEqual([vacio.nuevas, vacio.enriquecer, vacio.libres], [0, 0, 0]);
 });
 
-test("el lote se atiende alternando lo urgente y lo nuevo", () => {
+test("el lote se atiende alternando lo urgente, lo nuevo y lo que hay que enriquecer", () => {
   assert.deepEqual(intercalar(["u1", "u2", "u3"], ["n1"]), ["u1", "n1", "u2", "u3"]);
+  assert.deepEqual(intercalar(["u1", "u2"], ["n1", "n2"], ["e1"]), ["u1", "n1", "e1", "u2", "n2"]);
   assert.deepEqual(intercalar([], ["n1", "n2"]), ["n1", "n2"]);
   assert.deepEqual(intercalar(["u1"], []), ["u1"]);
   assert.deepEqual(intercalar<string>([], []), []);
+  assert.deepEqual(intercalar<string>(), []);
 });
