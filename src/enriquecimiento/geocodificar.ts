@@ -10,7 +10,9 @@
 import {
   coordenadasDeReferencia, datosDeReferencia, referenciasDeDireccion, ErrorCatastro,
 } from "@/enriquecimiento/catastro";
-import { limpiarReferenciaCatastral, partirDireccion } from "@/enriquecimiento/direccion";
+import {
+  limpiarReferenciaCatastral, lugarCatastral, nombreSinArticulo, partirDireccion,
+} from "@/enriquecimiento/direccion";
 import { MUNICIPIOS } from "@/datos/municipios";
 import type { PrecisionGeo } from "@/lib/tipos";
 
@@ -42,6 +44,9 @@ function esDatoAusente(err: unknown): boolean {
   return err instanceof ErrorCatastro;
 }
 
+/** Codigo con el que el Catastro responde "LA VÍA NO EXISTE" en Consulta_DNPLOC. */
+const VIA_NO_EXISTE = "33";
+
 export async function geocodificar(bien: {
   referenciaCatastral: string | null;
   direccion: string | null;
@@ -63,24 +68,8 @@ export async function geocodificar(bien: {
   // 2. Por direccion: se le pregunta al Catastro que hay en ese portal.
   const partida = partirDireccion(bien.direccion);
   if (partida?.numero && bien.municipio && bien.provincia) {
-    try {
-      const referencias = await referenciasDeDireccion({
-        provincia: bien.provincia, municipio: bien.municipio,
-        sigla: partida.sigla, calle: partida.nombre, numero: partida.numero,
-      });
-      // Varias unidades en el mismo portal comparten parcela y coordenadas:
-      // basta la primera para situarlo.
-      const primera = referencias[0];
-      if (primera) {
-        const resultado = await porReferencia(primera);
-        if (resultado) {
-          return { ...resultado, precision: "portal",
-            comoSeObtuvo: `Portal localizado en el Catastro: ${partida.sigla} ${partida.nombre} ${partida.numero}` };
-        }
-      }
-    } catch (err) {
-      if (!esDatoAusente(err)) throw err;
-    }
+    const resultado = await porDireccion(partida, bien.municipio, bien.provincia);
+    if (resultado) return resultado;
   }
 
   // 3. Centroide del municipio: sirve para el mapa, no para ir a verlo.
@@ -95,6 +84,53 @@ export async function geocodificar(bien: {
   }
 
   return VACIO;
+}
+
+/**
+ * Pregunta al Catastro por un portal. La provincia y el municipio van como
+ * los nombra el Catastro ("Málaga" no existe para el; "MALAGA" si), y si
+ * responde que la via no existe se prueba una segunda vez sin el articulo
+ * inicial: guarda "DEL MAR" en Benalmadena pero "CONSTITUCION", sin "DE
+ * LA", en Laguna de Duero, y no hay forma de saberlo sin preguntar. Las
+ * dos consultas se quedan en la cache del Catastro.
+ */
+async function porDireccion(
+  partida: { sigla: string; nombre: string; numero: string | null },
+  municipio: string,
+  provincia: string,
+): Promise<ResultadoGeo | null> {
+  if (!partida.numero) return null;
+  const lugar = lugarCatastral(provincia, municipio);
+  const nombres = [partida.nombre];
+  const corto = nombreSinArticulo(partida.nombre);
+  if (corto) nombres.push(corto);
+
+  for (const nombre of nombres) {
+    try {
+      const referencias = await referenciasDeDireccion({
+        provincia: lugar.provincia, municipio: lugar.municipio,
+        sigla: partida.sigla, calle: nombre, numero: partida.numero,
+      });
+      // Varias unidades en el mismo portal (los pisos de un edificio)
+      // comparten parcela y coordenadas: basta la primera para situarlo.
+      // Elegir el piso exacto exigiria entender la planta y la puerta del
+      // anuncio, que hoy se tiran; la superficie que se guarde es la de esa
+      // primera unidad y puede no ser la del bien.
+      const primera = referencias[0];
+      if (!primera) return null;
+      const resultado = await porReferencia(primera);
+      if (!resultado) return null;
+      return { ...resultado, precision: "portal",
+        comoSeObtuvo: `Portal localizado en el Catastro: ${partida.sigla} ${nombre} ${partida.numero}` };
+    } catch (err) {
+      if (!esDatoAusente(err)) throw err;
+      // Solo "la via no existe" justifica el segundo intento sin articulo;
+      // "el numero no existe" con el nombre bueno no lo arregla un nombre
+      // distinto.
+      if (!(err instanceof ErrorCatastro && err.codigo === VIA_NO_EXISTE)) return null;
+    }
+  }
+  return null;
 }
 
 async function porReferencia(refCat: string): Promise<ResultadoGeo | null> {

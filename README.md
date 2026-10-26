@@ -300,13 +300,12 @@ pequeña pero ya real:
   `valorar` devuelve null. Hasta que haya índices reales por código postal, la
   valoración solo existirá en las ciudades de esa tabla.
 - **Las direcciones son el verdadero cuello de botella**, y esta pasada aún
-  no las ha puesto a prueba. De los 822 bienes sin referencia, 161 no tienen
-  ni un dígito en la dirección y 68 dicen «s/n»; muchas vienen ya en el
-  formato del Catastro con el 0 como «sin número» («CL CHARCO 0», «UR PLAYA
-  SERENA 0 E»), que `partirDireccion` toma como número 0, o con texto detrás
-  del número que el patrón no reconoce. El único `ninguna` de la pasada es de
-  esos («UR PLAYA SERENA 0 E», Roquetas de Mar): no llegó ni al centro del
-  municipio porque Roquetas no está en la tabla de municipios.
+  no las había puesto a prueba. Se midieron después sobre la base entera:
+  el apartado siguiente cuenta qué entendía `partirDireccion` antes, qué
+  entiende ahora y qué responde el Catastro. El único `ninguna` de la pasada
+  era de esos («UR PLAYA SERENA 0 E», Roquetas de Mar): el 0 se tomaba por
+  un número, y no llegó ni al centro del municipio porque Roquetas no está
+  en la tabla de municipios.
 - **País Vasco y Navarra** salen como `municipio` (Bilbao, «CL LEZEAGA 6»):
   el Catastro estatal no los cubre, como se explica abajo. Son 24 bienes de
   1.878.
@@ -315,6 +314,97 @@ pequeña pero ya real:
 bienes siguen pendientes y cuántos esperan en la cola. Al ritmo medido, entre
 treinta y cuarenta bienes por pasada mientras queden fichas por bajar y más
 cuando no, los 1.848 pendientes tardan unas doce horas de cadena.
+
+### Las direcciones sin referencia, medidas
+
+El 26 de octubre de 2026 había 890 bienes reales sin referencia catastral.
+Sus direcciones, tal cual las escribe cada juzgado, pasadas por
+`partirDireccion` antes y después de enseñarle el formato del Catastro:
+
+| | Antes | Después |
+|---|---|---|
+| Salen con número de portal | 416 (13 de ellos con el «0» del Catastro, que no es un número) | 516 |
+| Salen sin número | 470 | 316 |
+| Se rechazan (no es una dirección de calle) | 4 | 58 |
+
+De los 374 que siguen sin número, 206 no traen ni un dígito («CALLE PESET
+ALEIXANDRE», «AVENIDA DE LA BALLESTA», parajes y partidas), 93 dicen «s/n»
+y 14 llevan el 0 del Catastro: ahí no hay portal que inventar. Los 58
+rechazados son parcelas, manzanas, plazas de garaje y pisos descritos en
+prosa («PARCELA SEÑALADA CON EL NÚMERO 15 DEL PLANO DE ADJUDICACIÓN…»,
+«Manzana nº MR-02B del Plan Parcial…»), cuyo único número no es el de una
+calle. Cuatro direcciones reales y lo que sale de ellas:
+
+| Dirección del anuncio | Antes | Después |
+|---|---|---|
+| `AVDA. DEL MAR, Nº 6, 4º E.` | sin número (el «4º E.» rompía el patrón) | AV · DEL MAR · 6 |
+| `UR PLAYA SERENA 0 E` | sin número, y «0 E» dentro del nombre | UR · PLAYA SERENA · sin número |
+| `CALLE GUILLEM DE BEZIERS, 1, PLAZA 93` | número 93 (la plaza de garaje) | CL · GUILLEM DE BEZIERS · 1 |
+| `AVENIDA DEL SOL APARTAMENTO 607` | número 607 | AV · DEL SOL · sin número |
+
+Las reglas que lo consiguen están comentadas en
+`src/enriquecimiento/direccion.ts` y probadas en `tests/direccion.test.ts`;
+la que manda es que el número es el primero que sigue al nombre, y solo si
+ninguna palabra anterior («parcela», «bloque», «apartamento», «km», «plaza»)
+dice que no es un portal. Lo que viene detrás del número (planta, puerta,
+escalera, «Es:1 Pl:01 Pt:01», el municipio repetido) se tira. De un rango
+(«9-11-13», «62-68») vale el primero.
+
+Sacar el número es la mitad: la otra mitad es que el Catastro lo encuentre.
+Las 253 direcciones distintas con número (516 bienes) se pasaron por la
+cadena real de `geocodificar` el mismo día, con la caché del Catastro
+guardando cada respuesta:
+
+| Lo que respondió el Catastro | Direcciones | Bienes |
+|---|---|---|
+| Portal encontrado (`portal`) | 79 | 154 |
+| No lo encuentra, pero el municipio está en la tabla (`municipio`) | 32 | 58 |
+| No lo encuentra y el municipio tampoco está (`ninguna`) | 140 | 302 |
+| Tiempo de espera agotado (se reintenta solo) | 2 | 2 |
+
+Los motivos por los que no lo encuentra, contados sobre las consultas: 70
+«la vía no existe» (el nombre del anuncio no es el del Catastro: «AVENIDA
+BARCELON», abreviaturas, nombres antiguos), 27 «el municipio no existe»
+(abajo), 19 «el número no existe» en esa calle, 12 «ningún inmueble» y 11
+de provincias forales. La primera pasada real en producción había dejado 0
+bienes en `portal`; con esto, un 30 % de los que traen número llegan.
+
+Tres cosas del Catastro que costó descubrir y que hacían inútil cualquier
+número bien sacado:
+
+- **La provincia tiene que ir como la nombra el Catastro.** El portal
+  escribe «Málaga», «Alicante/Alacant» o «Santa Cruz de Tenerife», y el
+  Catastro responde «LA PROVINCIA NO EXISTE» a las tres: quiere «MALAGA»,
+  «ALACANT» y «S.C. TENERIFE». Eran 298 de los 890 bienes, un tercio, que
+  no podían llegar a `portal` por mucho que la dirección estuviera bien.
+  `lugarCatastral` hace la traducción con su propia lista de provincias.
+  Los municipios van en mayúsculas sin acentos («MOJÁCAR» no existe,
+  «MOJACAR» sí), pero los bilingües siguen fallando: el Catastro quiere
+  «MONOVAR/MONOVER» entero y el anuncio dice «MONOVAR». Resolverlos exige
+  preguntarle al Catastro con `ConsultaMunicipio`, que admite nombres
+  parciales; está en «Lo que falta».
+- **La Ñ y la Ç se conservan; los acentos, no.** «MUÑOZ SECA» existe en
+  Armilla y «MUNOZ SECA» no; «LLANÇA» existe y «LLANCA» no, pero «LLANÇÀ»
+  tampoco. Antes se quitaba todo.
+- **El artículo unas veces sí y otras no.** Benalmádena guarda «DEL MAR»,
+  Laguna de Duero guarda «CONSTITUCION» (sin «DE LA») y Villanueva de la
+  Concepción «BALLESTA LA». No hay forma de saberlo sin preguntar, así que
+  `geocodificar` pregunta con el nombre tal cual y, si el Catastro dice que
+  la vía no existe, una segunda vez sin el artículo. Las dos respuestas se
+  quedan en la caché.
+
+Cuando el Catastro devuelve varias referencias para un portal (los pisos de
+un edificio), se usa la primera: todas comparten parcela y coordenadas, que
+es lo que hace falta para el mapa. Elegir el piso exacto exigiría entender
+la planta y la puerta del anuncio, que hoy se tiran; la superficie que se
+guarda es la de esa primera unidad y puede no ser la del bien.
+
+Los códigos de vía también se comprobaron contra el servicio real, porque
+la tabla tenía alguna suposición equivocada: el Catastro llama **PL** al
+polígono (no PG), **PD** a la partida, **PJ** al pasaje, **DS** al
+diseminado y **PQ** a la parroquia (Asturias). Cuando el juzgado escribe ya
+en formato Catastro («PL J-1 P FLAMENCA NORTE 66 Es:28»), el código pasa
+tal cual.
 
 ### Dos límites que conviene saber
 
@@ -607,10 +697,17 @@ contando en `db:estado`, que por eso ahora desglosa por fuente.
 - Conectar un modelo real al revisor y medir su acierto contra las reglas.
 - Índices de precios reales para la valoración, en lugar de la tabla provisional.
 - Catastros forales de País Vasco y Navarra.
-- Direcciones en el formato del Catastro en `partirDireccion`: el 0 como «sin
-  número» («CL CHARCO 0»), «s/n», y el texto que sigue al número («UR PLAYA
-  SERENA 0 E», «AV LAZA DE 82 +1 3»). Son la mayoría de los 822 bienes sin
-  referencia catastral, y hoy acaban en `municipio` o `ninguna`.
+- El nombre del municipio en la consulta por dirección al Catastro. El
+  anuncio dice «MONOVAR», «ALICANTE», «SANTA LUCIA» o «JEREZ FRONTERA» y el
+  Catastro solo entiende «MONOVAR/MONOVER», «ALICANTE/ALACANT», «SANTA LUCIA
+  DE TIRAJANA» y «JEREZ DE LA FRONTERA»: en la medición del 26 de octubre
+  de 2026, 27 de unas 300 consultas por dirección murieron en «EL MUNICIPIO
+  NO EXISTE», 12 de ellas de Santa Lucía de Tirajana. Su `ConsultaMunicipio`
+  admite nombres parciales y devuelve el oficial; habría que resolverlo una
+  vez por municipio en `catastro.ts` y guardarlo en la caché.
+- Las 206 direcciones sin ningún dígito y las 93 con «s/n» no tienen
+  portal que buscar: su única mejora es la tabla de municipios de abajo,
+  para que al menos lleguen a `municipio` y no a `ninguna`.
 - Ampliar la tabla de municipios de `src/datos/municipios.ts` (o sustituirla
   por el nomenclátor del INE con centroides): sin ella un pueblo que no está
   no tiene ni centro para el mapa ni índice para la valoración. En la primera
