@@ -372,14 +372,14 @@ de Postgres para la siguiente. Lo medido en producción:
 
 | | 26 de octubre de 2026, por la mañana | Misma tarde, tras «Cómo se reparte una pasada» |
 |---|---|---|
-| Descubrimiento (1.225 subastas) | unos 6 minutos: encolaba una a una | __DESCUBRIR_DESPUES__ |
-| Fichas por pasada | 36 (0 nuevas, 36 actualizadas) | __FICHAS_DESPUES__ |
+| Descubrimiento (1.225 subastas) | unos 6 minutos: encolaba una a una | 7 segundos: una sentencia por tanda de 500 |
+| Fichas por pasada | 36 (0 nuevas, 36 actualizadas) | 116 (77 nuevas, 39 actualizadas) |
 | Peticiones por refresco | 4 o 5 | 2 |
 
 Cada ficha nueva son cuatro o cinco páginas del portal a segundo y medio,
 más las escrituras en la base, que desde el runner de GitHub (Estados Unidos)
 a Neon (Fráncfort) tienen su latencia; un refresco, dos páginas. Llenar la
-base la primera vez lleva unas __PASADAS_LLENAR__ pasadas; a partir de ahí
+base la primera vez lleva unas 13 pasadas; a partir de ahí
 cada pasada refresca lo que el planificador dice que toca mirar, reserva
 medio lote para lo que falte por bajar, y el descubrimiento añade solo lo
 nuevo.
