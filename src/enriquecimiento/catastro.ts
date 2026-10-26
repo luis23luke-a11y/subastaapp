@@ -110,16 +110,27 @@ async function llamar(
 
   await limitador.turno();
   const { url, accion } = SERVICIOS[servicio];
-  const respuesta = await fetch(url, {
-    method: "POST",
-    headers: {
-      "content-type": "text/xml; charset=utf-8",
-      soapaction: `"${accion}/${operacion}"`,
-      "user-agent": "SubastApp/0.1 (buscador de subastas; contacto en la web)",
-    },
-    body: sobre(parametros),
-    signal: AbortSignal.timeout(20_000),
-  });
+  let respuesta: Response;
+  try {
+    respuesta = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "text/xml; charset=utf-8",
+        soapaction: `"${accion}/${operacion}"`,
+        "user-agent": "SubastApp/0.1 (buscador de subastas; contacto en la web)",
+      },
+      body: sobre(parametros),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (err) {
+    // fetch dice solo "fetch failed" y esconde la causa (un reset, un
+    // timeout, un DNS que no resuelve) en `cause`. En el log de una pasada
+    // hace falta la causa: 6 de 40 consultas fallaron asi el 26 de octubre
+    // de 2026 desde el runner de GitHub y no se sabia por que.
+    const causa = err instanceof Error && err.cause instanceof Error ? err.cause.message : "";
+    const mensaje = err instanceof Error ? err.message : String(err);
+    throw new Error(`Catastro no responde en ${operacion}: ${mensaje}${causa ? ` (${causa})` : ""}`);
+  }
 
   const crudo = await respuesta.text();
   if (!respuesta.ok) {

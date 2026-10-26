@@ -265,6 +265,57 @@ la lista de inmuebles que contiene. Si solo hay uno, que es el caso de una casa
 unifamiliar, se usan sus datos; con varios no se elige ninguno, porque un
 edificio de siete pisos no tiene una superficie.
 
+### Qué sale con datos reales
+
+Hasta el 26 de octubre de 2026 el enriquecimiento no había corrido nunca en
+producción: los trabajos `enriquecer` tienen la prioridad más baja de la cola
+y los refrescos no les dejaban turno («Cómo se reparte una pasada» cuenta el
+arreglo). La primera pasada real con turno garantizado (run 40320604689,
+desde la rama, 14 minutos) enriqueció 34 bienes además de bajar 79 fichas
+nuevas y refrescar 39; 30 eran reales y 4, de muestra, arrastrados de la cola
+vieja. Lo que salió de los 30 reales:
+
+| | Bienes | Con superficie | Con año | Valorados |
+|---|---|---|---|---|
+| `catastral` (referencia del anuncio) | 28 | 28 | 22 | 4 |
+| `portal` (dirección consultada al Catastro) | 0 | | | |
+| `municipio` (centro del municipio) | 1 | 0 | | 0 |
+| `ninguna` | 1 | 0 | | 0 |
+
+Y seis consultas más fallaron con «fetch failed» del Catastro desde el runner
+de GitHub; se reintentan solas con espera creciente, y desde entonces el error
+dice la causa (reset, timeout, DNS). Cuatro lecturas de esta primera muestra,
+pequeña pero ya real:
+
+- **Con referencia catastral, el Catastro acierta siempre.** Las 28 fueron a
+  `catastral` con superficie, y la cola tomó primero los bienes con
+  referencia porque son los de id más bajo. De los 1.878 bienes reales, 1.056
+  traen referencia, así que algo más de la mitad de la base acabará con
+  coordenadas exactas sin más trabajo.
+- **La valoración casi nunca sale**, 4 de 28, por dos motivos distintos. Nueve
+  eran suelo o rústica, que no se valoran por metro construido a propósito
+  (seis parcelas agrarias salen con 0 m² de uso «Agrario»). Y el resto son
+  pueblos que no están en la tabla de municipios de `src/datos/municipios.ts`
+  (Verín, Cerdido, Salem, Castilléjar, Cuéllar…): sin índice de zona,
+  `valorar` devuelve null. Hasta que haya índices reales por código postal, la
+  valoración solo existirá en las ciudades de esa tabla.
+- **Las direcciones son el verdadero cuello de botella**, y esta pasada aún
+  no las ha puesto a prueba. De los 822 bienes sin referencia, 161 no tienen
+  ni un dígito en la dirección y 68 dicen «s/n»; muchas vienen ya en el
+  formato del Catastro con el 0 como «sin número» («CL CHARCO 0», «UR PLAYA
+  SERENA 0 E»), que `partirDireccion` toma como número 0, o con texto detrás
+  del número que el patrón no reconoce. El único `ninguna` de la pasada es de
+  esos («UR PLAYA SERENA 0 E», Roquetas de Mar): no llegó ni al centro del
+  municipio porque Roquetas no está en la tabla de municipios.
+- **País Vasco y Navarra** salen como `municipio` (Bilbao, «CL LEZEAGA 6»):
+  el Catastro estatal no los cubre, como se explica abajo. Son 24 bienes de
+  1.878.
+
+`npm run db:estado` enseña este desglose al día, por precisión, con cuántos
+bienes siguen pendientes y cuántos esperan en la cola. Al ritmo medido, entre
+treinta y cuarenta bienes por pasada mientras queden fichas por bajar y más
+cuando no, los 1.848 pendientes tardan unas doce horas de cadena.
+
 ### Dos límites que conviene saber
 
 **País Vasco y Navarra no están.** Mantienen sus propios catastros forales. Lo
@@ -412,6 +463,7 @@ de Postgres para la siguiente. Lo medido en producción:
 | Descubrimiento (1.225 subastas) | unos 6 minutos: encolaba una a una | 7 segundos: una sentencia por tanda de 500 |
 | Fichas por pasada | 36 (0 nuevas, 36 actualizadas) | 116 (77 nuevas, 39 actualizadas) |
 | Peticiones por refresco | 4 o 5 | 2 |
+| Bienes enriquecidos por pasada | 0 (nunca les tocaba el turno) | 34, de 40 intentados |
 
 Cada ficha nueva son cuatro o cinco páginas del portal a segundo y medio,
 más las escrituras en la base, que desde el runner de GitHub (Estados Unidos)
@@ -432,7 +484,12 @@ horario queda solo de respaldo para volver a arrancar la cadena si se corta.
 Antes de lanzar la siguiente, la pasada mira si ya hay otra en cola o en
 marcha y, si la hay, no lanza nada: así nunca corren dos cadenas a la vez
 y el ritmo de peticiones al portal no se dobla. Una prueba desde una rama no
-encadena nada, solo las pasadas de `main`.
+encadena nada, solo las pasadas de `main`. Ojo con eso: la prueba entra en el
+mismo grupo de concurrencia, así que la pasada de `main` que la vea en cola
+tampoco encadena, y al acabar la prueba la cadena está parada hasta que el
+horario de respaldo la rearranque. Tras probar desde una rama, mirar
+`gh run list --workflow=ingesta-boe.yml` y, si no hay nada en marcha ni en
+cola, lanzar `gh workflow run ingesta-boe.yml --ref main`.
 
 Para parar la ingesta: GitHub → Actions → «Ingesta BOE» → «Disable workflow».
 Para volver a arrancarla: habilitarlo y pulsar «Run workflow», o esperar al
@@ -550,6 +607,15 @@ contando en `db:estado`, que por eso ahora desglosa por fuente.
 - Conectar un modelo real al revisor y medir su acierto contra las reglas.
 - Índices de precios reales para la valoración, en lugar de la tabla provisional.
 - Catastros forales de País Vasco y Navarra.
+- Direcciones en el formato del Catastro en `partirDireccion`: el 0 como «sin
+  número» («CL CHARCO 0»), «s/n», y el texto que sigue al número («UR PLAYA
+  SERENA 0 E», «AV LAZA DE 82 +1 3»). Son la mayoría de los 822 bienes sin
+  referencia catastral, y hoy acaban en `municipio` o `ninguna`.
+- Ampliar la tabla de municipios de `src/datos/municipios.ts` (o sustituirla
+  por el nomenclátor del INE con centroides): sin ella un pueblo que no está
+  no tiene ni centro para el mapa ni índice para la valoración. En la primera
+  pasada real, 24 de 28 bienes bien localizados se quedaron sin valoración
+  por esto y por ser suelo o rústica.
 - Alertas por correo y Telegram, incluidas las cancelaciones.
 - Favoritos, informe PDF y pagos.
 - Aviso legal, política de privacidad y revisión de RGPD.
