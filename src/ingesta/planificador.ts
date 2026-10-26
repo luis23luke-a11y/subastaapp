@@ -168,60 +168,91 @@ export function fusionarEncolado(
 }
 
 // ---------------------------------------------------------------------------
-// Reparto de cada lote de trabajos entre fichas nuevas y todo lo demas.
+// Reparto de cada lote de trabajos entre fichas nuevas, bienes por enriquecer
+// y todo lo demas.
 //
 // La cola se toma por prioridad, y el refresco de lo que cierra hoy tiene
-// prioridad 10 frente al 100 de una ficha nueva. Con una subasta que cierra
-// hoy eso es lo que se quiere; con doscientas, la pasada entera se va en
-// refrescarlas y las mil fichas que faltan por bajar no avanzan (medido el
-// 26 de octubre de 2026: 36 actualizadas, 0 nuevas, 999 pendientes). Por eso
-// cada lote reserva sitio para fichas nuevas: se toman primero hasta la mitad
-// del lote en trabajos "detalle", y el resto del lote va por prioridad, sea
-// del tipo que sea. Sin fichas nuevas pendientes, el lote entero va por
-// prioridad. Asi una pasada nunca se va entera en refrescos mientras quede
-// algo por bajar, y lo que cierra hoy sigue teniendo al menos medio lote.
+// prioridad 10 frente al 100 de una ficha nueva y al 400 de un bien por
+// enriquecer. Con una subasta que cierra hoy eso es lo que se quiere; con
+// doscientas, la pasada entera se va en refrescarlas y las mil fichas que
+// faltan por bajar no avanzan (medido el 26 de octubre de 2026: 36
+// actualizadas, 0 nuevas, 999 pendientes). Y el enriquecimiento, con la
+// prioridad mas baja de todas, no llegaba nunca: 1.559 bienes reales y
+// ninguno localizado al cabo de dos dias de pasadas, porque los refrescos se
+// reprograman a si mismos sin fin y siempre hay alguno listo antes que el.
+//
+// Por eso cada lote reserva sitio por tipo, en este orden: hasta la mitad del
+// lote para trabajos "detalle" mientras haya fichas sin bajar, hasta un
+// cuarto para "enriquecer" mientras haya bienes por enriquecer, y lo que
+// queda va por prioridad, sea del tipo que sea. Un hueco reservado que no se
+// llena (quedan tres fichas, no cinco) vuelve a lo urgente. Asi una pasada
+// nunca se va entera en refrescos mientras quede algo por bajar o por
+// localizar, y lo que cierra hoy sigue teniendo al menos un cuarto del lote.
+//
+// Por que un cuarto y no mas: enriquecer un bien son una a tres consultas al
+// Catastro a 350 ms, mucho menos que una ficha nueva (cuatro o cinco paginas
+// del portal a segundo y medio), asi que cinco por lote de veinte dan varias
+// decenas por pasada sin quitarle al portal casi nada de tiempo.
 // ---------------------------------------------------------------------------
 
 export interface RepartoLote {
   /** Trabajos "detalle" que se toman aparte, antes que la prioridad. */
   nuevas: number;
+  /** Trabajos "enriquecer" que se toman aparte, antes que la prioridad. */
+  enriquecer: number;
   /** Huecos que quedan para lo mas urgente de cualquier tipo. */
   libres: number;
   motivo: string;
 }
 
+export interface FraccionesLote {
+  /** Parte del lote reservada a fichas nuevas. Por defecto la mitad. */
+  nuevas?: number;
+  /** Parte del lote reservada a bienes por enriquecer. Por defecto un cuarto. */
+  enriquecer?: number;
+}
+
 export function repartirLote(
   cuantos: number,
-  pendientes: { detalle?: number },
-  fraccionNuevas = 0.5,
+  pendientes: { detalle?: number; enriquecer?: number },
+  fracciones: FraccionesLote = {},
 ): RepartoLote {
   const tamano = Math.max(0, Math.floor(cuantos));
   const sinBajar = Math.max(0, pendientes.detalle ?? 0);
-  if (tamano === 0 || sinBajar === 0) {
-    return { nuevas: 0, libres: tamano, motivo: "No hay fichas nuevas: el lote entero va por prioridad" };
-  }
-  const reserva = Math.min(tamano, Math.ceil(tamano * fraccionNuevas));
-  const nuevas = Math.min(reserva, sinBajar);
-  return {
-    nuevas,
-    libres: tamano - nuevas,
-    motivo: `${nuevas} de ${tamano} reservados para fichas nuevas (${sinBajar} sin bajar)`,
-  };
+  const sinEnriquecer = Math.max(0, pendientes.enriquecer ?? 0);
+
+  // La reserva de fichas redondea hacia arriba (con lote impar, la ficha nueva
+  // gana); la de enriquecer, hacia abajo, para que en un lote pequeño siempre
+  // quede algun hueco para lo urgente.
+  const nuevas = Math.min(sinBajar, Math.ceil(tamano * (fracciones.nuevas ?? 0.5)));
+  const enriquecer = Math.min(
+    sinEnriquecer, Math.floor(tamano * (fracciones.enriquecer ?? 0.25)), tamano - nuevas,
+  );
+  const libres = tamano - nuevas - enriquecer;
+
+  const partes: string[] = [];
+  if (nuevas > 0) partes.push(`${nuevas} para fichas nuevas (${sinBajar} sin bajar)`);
+  if (enriquecer > 0) partes.push(`${enriquecer} para enriquecer (${sinEnriquecer} bienes pendientes)`);
+  const motivo = partes.length === 0
+    ? "Nada que bajar ni que enriquecer: el lote entero va por prioridad"
+    : `De ${tamano}: ${partes.join(", ")}; ${libres} por prioridad`;
+  return { nuevas, enriquecer, libres, motivo };
 }
 
 /**
- * Orden en que se atiende un lote: alternando lo urgente y lo nuevo, para
- * que si la pasada se agota a mitad de lote no se queden fuera siempre los
- * mismos. Lo que sobra de la lista mas larga va al final.
+ * Orden en que se atiende un lote: alternando una de cada lista (lo urgente,
+ * lo nuevo, lo que hay que enriquecer), para que si la pasada se agota a
+ * mitad de lote no se queden fuera siempre los mismos. Lo que sobra de las
+ * listas mas largas va al final.
  */
-export function intercalar<T>(urgentes: T[], nuevas: T[]): T[] {
+export function intercalar<T>(...listas: T[][]): T[] {
   const r: T[] = [];
-  const n = Math.max(urgentes.length, nuevas.length);
+  const n = Math.max(0, ...listas.map((l) => l.length));
   for (let i = 0; i < n; i++) {
-    const u = urgentes[i];
-    const v = nuevas[i];
-    if (u !== undefined) r.push(u);
-    if (v !== undefined) r.push(v);
+    for (const lista of listas) {
+      const v = lista[i];
+      if (v !== undefined) r.push(v);
+    }
   }
   return r;
 }

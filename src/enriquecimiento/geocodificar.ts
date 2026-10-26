@@ -10,7 +10,7 @@
 import {
   coordenadasDeReferencia, datosDeReferencia, referenciasDeDireccion, ErrorCatastro,
 } from "@/enriquecimiento/catastro";
-import { partirDireccion } from "@/enriquecimiento/direccion";
+import { limpiarReferenciaCatastral, partirDireccion } from "@/enriquecimiento/direccion";
 import { MUNICIPIOS } from "@/datos/municipios";
 import type { PrecisionGeo } from "@/lib/tipos";
 
@@ -48,10 +48,12 @@ export async function geocodificar(bien: {
   municipio: string | null;
   provincia: string | null;
 }): Promise<ResultadoGeo> {
-  // 1. Por referencia catastral: lo exacto.
-  if (bien.referenciaCatastral) {
+  // 1. Por referencia catastral: lo exacto. Limpia de puntos, barras y
+  //    textos que no son una referencia (ver `limpiarReferenciaCatastral`).
+  const referencia = limpiarReferenciaCatastral(bien.referenciaCatastral);
+  if (referencia) {
     try {
-      const resultado = await porReferencia(bien.referenciaCatastral);
+      const resultado = await porReferencia(referencia);
       if (resultado) return resultado;
     } catch (err) {
       if (!esDatoAusente(err)) throw err;

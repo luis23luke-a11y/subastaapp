@@ -64,6 +64,7 @@ async function principal() {
     `Hecho en ${((Date.now() - inicio) / 1000).toFixed(1)}s. ` +
     `${r.descubiertas} descubiertas, ${r.procesadas} procesadas ` +
     `(${r.nuevas} nuevas, ${r.actualizadas} actualizadas), ` +
+    `${r.enriquecidos} bienes enriquecidos (${r.localizados} localizados), ` +
     `${r.fallidas} fallos (${r.rendidas} rendidas), ${r.peticiones} peticiones.` +
     (r.agotadoElTiempo ? " Quedo trabajo en la cola para la siguiente pasada." : ""),
   );

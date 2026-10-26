@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// El worker. Tres trabajos sobre una sola cola:
+// El worker. Cuatro trabajos sobre una sola cola:
 //
 //   descubrir  pregunta a la fuente que subastas hay nuevas y encola un
 //              "detalle" por cada una.
@@ -22,7 +22,7 @@ import {
   estadoCola, fallar, guardarCrudo, pendientesPorTipo, rescatar, tomar, type Trabajo,
 } from "@/ingesta/cola";
 import { guardarSubasta, refrescarSubasta } from "@/ingesta/normalizar";
-import { bienesPendientes, enriquecerBien } from "@/enriquecimiento/enriquecer";
+import { encolarBienesPendientes, enriquecerBien } from "@/enriquecimiento/enriquecer";
 import type { Adaptador } from "@/ingesta/adaptador";
 
 export interface OpcionesWorker {
@@ -42,7 +42,10 @@ export interface ResumenWorker {
   procesadas: number;
   nuevas: number;
   actualizadas: number;
+  /** Bienes pasados por el enriquecimiento, hayan salido localizados o no. */
   enriquecidos: number;
+  /** De esos, los que acabaron con coordenadas. */
+  localizados: number;
   fallidas: number;
   rendidas: number;
   peticiones: number;
@@ -64,7 +67,7 @@ export async function ejecutarWorker(
   const limitador = crearLimitador(adaptador.msEntrePeticiones);
   const limite = Date.now() + presupuestoMs;
   const r: ResumenWorker = {
-    descubiertas: 0, procesadas: 0, nuevas: 0, actualizadas: 0, enriquecidos: 0,
+    descubiertas: 0, procesadas: 0, nuevas: 0, actualizadas: 0, enriquecidos: 0, localizados: 0,
     fallidas: 0, rendidas: 0, peticiones: 0, agotadoElTiempo: false,
   };
 
@@ -81,13 +84,21 @@ export async function ejecutarWorker(
       await encolar({ fuente: adaptador.nombre, tipo: "descubrir", prioridad: 1, modo: "programar" });
     }
 
+    // Los bienes por enriquecer que dejaron las pasadas anteriores entran en
+    // la cola ya, sin esperar a que esta pasada baje una ficha: con todo
+    // descubierto y bajado, es lo unico que la pasada tendria que hacer.
+    const encolados = await encolarBienesPendientes(adaptador.nombre);
+    if (encolados > 0) registrar(`  ${encolados} bienes encolados para enriquecer`);
+
     while (Date.now() < limite) {
-      // Cada lote reserva sitio para fichas nuevas; el resto va por prioridad.
-      // La regla y el porque, en `repartirLote`.
+      // Cada lote reserva sitio para fichas nuevas y para bienes por
+      // enriquecer; el resto va por prioridad. La regla y el porque, en
+      // `repartirLote`.
       const reparto = repartirLote(lote, await pendientesPorTipo(adaptador.nombre));
       const nuevas = await tomar(adaptador.nombre, reparto.nuevas, ["detalle"]);
+      const enriquecer = await tomar(adaptador.nombre, reparto.enriquecer, ["enriquecer"]);
       const urgentes = await tomar(adaptador.nombre, reparto.libres);
-      const trabajos = intercalar(urgentes, nuevas);
+      const trabajos = intercalar(urgentes, nuevas, enriquecer);
       if (trabajos.length === 0) break;
 
       for (const trabajo of trabajos) {
@@ -157,7 +168,17 @@ async function atender(adaptador: Adaptador, trabajo: Trabajo, ctx: Contexto): P
     // El Catastro tiene su propio limitador dentro del cliente: no se usa el
     // de la fuente de subastas, que mide otra cosa.
     const res = await enriquecerBien(bienId);
-    if (res) ctx.resumen.enriquecidos++;
+    if (!res) return;
+    ctx.resumen.enriquecidos++;
+    if (res.localizado) ctx.resumen.localizados++;
+    // Una linea por bien, para poder leer en el log de la pasada que
+    // direcciones no entiende la cadena y por que.
+    ctx.registrar(
+      `  bien ${bienId}: ${res.precision}` +
+      (res.conSuperficie ? ", con superficie" : ", sin superficie") +
+      (res.conValoracion ? ", valorado" : "") +
+      ` (${res.comoSeObtuvo})`,
+    );
     return;
   }
 
@@ -213,14 +234,10 @@ async function bajarEntera(adaptador: Adaptador, id: string, ctx: Contexto): Pro
   if (guardado.nueva) ctx.resumen.nuevas++;
   else ctx.resumen.actualizadas++;
 
-  // Los bienes nuevos o aun sin localizar entran en la cola de enriquecimiento,
-  // todos en una sentencia: eran hasta 50 idas y vueltas por ficha.
-  const bienes = await bienesPendientes(50);
-  if (bienes.length > 0) {
-    await encolarVarios({
-      fuente: adaptador.nombre, tipo: "enriquecer", referencias: bienes.map(String), prioridad: 400,
-    });
-  }
+  // Los bienes que trae la ficha entran en la cola de enriquecimiento, en una
+  // sola sentencia y sin repetir los que ya estan en cola (ver
+  // `encolarBienesPendientes`).
+  await encolarBienesPendientes(adaptador.nombre);
 
   await programarRefresco(adaptador, id, resultado.subasta.fechaFin ?? null, resultado.subasta.estado);
 }

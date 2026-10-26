@@ -110,7 +110,7 @@ así que encolar algo que ya estaba es fundir la petición con la fila vieja. Ha
 **dos modos de encolar**, y la regla es la de `fusionarEncolado` en
 `src/ingesta/planificador.ts`, con sus pruebas:
 
-| Si la fila ya existe y está… | `adelantar` (descubrimiento, bienes por enriquecer) | `programar` (un refresco que se reprograma) |
+| Si la fila ya existe y está… | `adelantar` (el descubrimiento) | `programar` (un refresco que se reprograma; un bien que toca volver a enriquecer) |
 |---|---|---|
 | hecha | no se toca | vuelve a pendiente con la fecha nueva |
 | en marcha | no se toca | queda pendiente para la fecha nueva; `completar` ya no la cierra |
@@ -134,19 +134,30 @@ subasta que cierra hoy tiene prioridad 10 frente al 100 de una ficha nueva.
 Con una subasta que cierra hoy es lo que se quiere; con doscientas, la pasada
 entera se va en refrescarlas y las mil fichas que faltan por bajar no avanzan.
 Pasó el 26 de octubre de 2026: 36 actualizadas, 0 nuevas y 999 fichas sin
-bajar al cabo de una pasada. Desde entonces hay tres reglas, las dos primeras
-en `src/ingesta/planificador.ts` como funciones puras con pruebas:
+bajar al cabo de una pasada. Y lo mismo, más despacio, con el enriquecimiento:
+los trabajos `enriquecer` tienen prioridad 400, la más baja, y como los
+refrescos se reprograman a sí mismos sin fin siempre había alguno listo antes;
+dos días de pasadas y 1.559 bienes reales sin que ninguno pasara por el
+Catastro, con el mapa diciendo «0 lotes localizados». Desde entonces hay tres
+reglas, las dos primeras en `src/ingesta/planificador.ts` como funciones puras
+con pruebas:
 
-- **Cada lote de trabajos reserva sitio para fichas nuevas** (`repartirLote`).
-  El worker toma los trabajos de veinte en veinte; mientras haya fichas sin
-  bajar, diez de cada veinte son trabajos `detalle` y los otros diez van por
-  prioridad, sean del tipo que sean. Sin fichas nuevas pendientes, el lote
-  entero va por prioridad. Así una pasada nunca se va entera en refrescos
-  mientras quede algo por bajar, y lo que cierra hoy sigue teniendo medio
-  lote. Dentro del lote se alternan lo urgente y lo nuevo (`intercalar`), para
-  que si el tiempo se agota a mitad de lote no se queden fuera siempre los
-  mismos; los que se quedan fuera vuelven a la cola tal cual, sin que cuente
-  como intento.
+- **Cada lote de trabajos reserva sitio por tipo** (`repartirLote`). El worker
+  toma los trabajos de veinte en veinte; mientras haya fichas sin bajar, diez
+  de cada veinte son trabajos `detalle`; mientras haya bienes por enriquecer,
+  cinco de cada veinte son trabajos `enriquecer`; y el resto va por
+  prioridad, sea del tipo que sea. Un hueco reservado que no se llena vuelve a
+  lo urgente, y sin nada que bajar ni enriquecer el lote entero va por
+  prioridad. Así una pasada nunca se va entera en refrescos mientras quede
+  algo por bajar o por localizar, y lo que cierra hoy sigue teniendo al menos
+  un cuarto del lote. La reserva de enriquecer es un cuarto y no más porque
+  un bien son una a tres consultas al Catastro a 350 ms, mucho menos que una
+  ficha (cuatro o cinco páginas del portal a segundo y medio): cinco por lote
+  dan varias decenas de bienes por pasada sin quitarle al portal casi tiempo.
+  Dentro del lote se alternan lo urgente, lo nuevo y lo que hay que
+  enriquecer (`intercalar`), para que si el tiempo se agota a mitad de lote no
+  se queden fuera siempre los mismos; los que se quedan fuera vuelven a la
+  cola tal cual, sin que cuente como intento.
 - **Un refresco cuesta la mitad que una ficha nueva.** De una subasta ya
   bajada solo cambian el estado, las fechas y las pujas, y eso está en dos
   pestañas del portal: la general y la de pujas. El adaptador ofrece un
@@ -165,6 +176,21 @@ en `src/ingesta/planificador.ts` como funciones puras con pruebas:
   en cola, también. Desde el runner de GitHub (Estados Unidos) a Neon
   (Fráncfort) cada ida y vuelta son más de cien milisegundos, y el
   descubrimiento solo gastaba cuatro minutos de cada pasada en encolar.
+
+Y una cuarta, sobre **cómo se alimenta la cola de enriquecer**
+(`encolarBienesPendientes`, en `src/enriquecimiento/enriquecer.ts`). La vista
+`v_bien_por_enriquecer` dice qué bienes se podrían enriquecer mejor: los que
+nunca se han mirado, los que se quedaron en el centro del municipio o sin
+localizar, los que no tienen superficie y los que llevan 180 días sin revisar.
+Pero «se podría mejorar» no es «hay que volver a intentarlo ya»: un bien cuya
+dirección el Catastro no entiende sigue en la vista después de enriquecerlo.
+El worker encolaba «los 50 primeros de la vista» tras cada ficha, que eran
+siempre los mismos 50, y los otros 1.500 nunca entraban. Ahora una sola
+sentencia cruza la vista con la tabla de trabajos y deja fuera lo que ya está
+en cola o en marcha y lo que se intentó hace menos de 30 días; primero van los
+que nunca se han enriquecido y luego los que llevan más tiempo sin revisar.
+Se ejecuta al empezar la pasada y tras cada ficha nueva, y solo para bienes de
+la fuente que se está ingiriendo: los de muestra no son direcciones reales.
 
 Dos cosas que parecen detalles y no lo son. El **contenido crudo** se guarda
 antes de parsearlo, así que el día que mejoremos la extracción de cargas se
@@ -222,6 +248,17 @@ Un punto en el centro del pueblo pintado como si fuera el portal exacto es
 peor que no pintar nada, porque el usuario decide mirando el mapa. Por eso la
 ficha y el buscador muestran la precisión, y el mapa colorea distinto los
 puntos aproximados.
+
+La referencia catastral del anuncio se limpia antes de preguntar
+(`limpiarReferenciaCatastral`, en `src/enriquecimiento/direccion.ts`, con
+pruebas): de 888 referencias reales, 117 no tenían ni 14 ni 20 caracteres,
+con un punto final («0295605QA6609E0001EZ.»), con barras o guiones entre los
+bloques («1649914/DF3814H/0021/QO»), con un texto que no es una referencia
+(«NOCONSTA», «Nocoordinada», 28 veces) o con un carácter de menos, que no
+tiene arreglo. Las dos primeras formas se recuperan quitando lo que no es
+letra ni dígito; el resto pasa directamente al intento por dirección en vez de
+gastar una petición del Catastro en un error seguro. El dato de origen no se
+toca: la limpieza solo decide con qué se pregunta.
 
 Una referencia de parcela de 14 caracteres no tiene superficie propia: devuelve
 la lista de inmuebles que contiene. Si solo hay uno, que es el caso de una casa
