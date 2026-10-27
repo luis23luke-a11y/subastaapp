@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { esperaHastaVencimiento } from "../src/ingesta/planificador";
 import {
   esperaReintento, fusionarEncolado, intercalar, merecePena, planificarRefresco, repartirLote,
   type FilaEnCola, type PeticionEncolar,
@@ -185,4 +186,17 @@ test("el lote se atiende alternando lo urgente, lo nuevo y lo que hay que enriqu
   assert.deepEqual(intercalar(["u1"], []), ["u1"]);
   assert.deepEqual(intercalar<string>([], []), []);
   assert.deepEqual(intercalar<string>(), []);
+});
+
+test("sin trabajo tomable, la pasada espera al siguiente vencimiento si cabe en el tope", () => {
+  const ahora = 1_000_000;
+  const limite = ahora + 600_000;
+  // Vence en 90 s: se espera eso mas el margen.
+  assert.equal(esperaHastaVencimiento(new Date(ahora + 90_000), ahora, limite, 2_000), 92_000);
+  // Ya ha vencido (relojes distintos): no se espera nada, se vuelve a mirar.
+  assert.equal(esperaHastaVencimiento(new Date(ahora - 5_000), ahora, limite, 2_000), 0);
+  // Vence despues del tope: la pasada acaba.
+  assert.equal(esperaHastaVencimiento(new Date(ahora + 700_000), ahora, limite), null);
+  // No hay nada programado: la pasada acaba.
+  assert.equal(esperaHastaVencimiento(null, ahora, limite), null);
 });
