@@ -51,11 +51,13 @@ entorno, el enlace se envía por correo en vez de imprimirse.
 | Comando | Qué hace |
 |---|---|
 | `npm run dev` | Servidor de desarrollo |
-| `npm test` | Las 101 pruebas (`node --test`, sin dependencias) |
+| `npm test` | Las 133 pruebas (`node --test`, sin dependencias) |
 | `npm run tipos` | `tsc --noEmit` |
 | `npm run db:migrar` | Aplica las migraciones de `db/` |
 | `npm run db:estado` | Comprueba PostGIS, cuenta filas por tabla y por fuente, y enseña las últimas pasadas del worker |
 | `npm run db:semilla` | Da de alta un invitado y siembra datos de muestra |
+| `npm run db:causas` | Por qué cada bien real sin localizar se quedó así, contado por causa con ejemplos literales (`--precision municipio` para otro grupo, `--json ruta` para guardar la causa de cada bien) |
+| `npm run db:reenriquecer` | Vuelve a enriquecer con el código actual los bienes reales sin localizar (`--precision`, `--sin-enriquecer`, `--limite`); regenera `bien_enriquecido`, no toca el origen |
 | `npm run acceso` | Genera un enlace de acceso |
 | `npm run ingesta` | Una pasada del worker de ingesta |
 | `npm run ingesta -- --cola` | Estado de la cola de trabajo |
@@ -241,7 +243,7 @@ las coordenadas:
 |---|---|
 | Referencia catastral del anuncio | `catastral` |
 | Dirección consultada al Catastro | `portal` |
-| Centro del municipio | `municipio` |
+| Centro del municipio (tabla propia o CartoCiudad, del IGN) | `municipio` |
 | Nada aprovechable | `ninguna` |
 
 Un punto en el centro del pueblo pintado como si fuera el portal exacto es
@@ -379,19 +381,45 @@ número bien sacado:
   no podían llegar a `portal` por mucho que la dirección estuviera bien.
   `lugarCatastral` hace la traducción con su propia lista de provincias.
   Los municipios van en mayúsculas sin acentos («MOJÁCAR» no existe,
-  «MOJACAR» sí), pero los bilingües siguen fallando: el Catastro quiere
-  «MONOVAR/MONOVER» entero y el anuncio dice «MONOVAR». Resolverlos exige
-  preguntarle al Catastro con `ConsultaMunicipio`, que admite nombres
-  parciales; está en «Lo que falta».
+  «MOJACAR» sí).
+- **El municipio también tiene que ir como lo nombra el Catastro**, y el
+  anuncio no lo escribe así: «CREVILLENTE» es «CREVILLENT», «SANTA LUCIA»
+  es «SANTA LUCIA DE TIRAJANA» y «MONOVAR» es «MONOVAR/MONOVER» entero. 78
+  bienes morían en «EL MUNICIPIO NO EXISTE». Cuando responde eso,
+  `geocodificar` le pide la lista de municipios de la provincia
+  (`ConsultaMunicipio`, una consulta por provincia que se queda en la caché)
+  y `elegirMunicipio` (`src/enriquecimiento/coincidir.ts`, con pruebas)
+  escoge el que es el mismo: igual, igual a una mitad del bilingüe, el que
+  sigue con más palabras o el que se diferencia en una o dos letras al
+  final. Si encajan dos o ninguno, no se adivina.
 - **La Ñ y la Ç se conservan; los acentos, no.** «MUÑOZ SECA» existe en
   Armilla y «MUNOZ SECA» no; «LLANÇA» existe y «LLANCA» no, pero «LLANÇÀ»
   tampoco. Antes se quitaba todo.
-- **El artículo unas veces sí y otras no.** Benalmádena guarda «DEL MAR»,
-  Laguna de Duero guarda «CONSTITUCION» (sin «DE LA») y Villanueva de la
-  Concepción «BALLESTA LA». No hay forma de saberlo sin preguntar, así que
-  `geocodificar` pregunta con el nombre tal cual y, si el Catastro dice que
-  la vía no existe, una segunda vez sin el artículo. Las dos respuestas se
-  quedan en la caché.
+- **El nombre de la vía tiene que ser el suyo, letra por letra.**
+  Benalmádena guarda «DEL MAR», Laguna de Duero «CONSTITUCION» (sin «DE
+  LA»), Olot «SASTRES, DELS» (con el artículo detrás y una coma) y Mollet
+  del Vallès tiene la calle Burgos del anuncio como «AV BURGOS». Era la
+  causa más gorda entre las direcciones con número: 199 bienes en «LA VÍA
+  NO EXISTE». La salida es la misma que con el municipio: `ConsultaVia`
+  admite un trozo del nombre y devuelve las vías que lo contienen con su
+  nombre exacto, así que cuando el Catastro dice que la vía no existe se le
+  pregunta por la palabra más larga del nombre («SASTRES», «CONSTITUCION»)
+  y `elegirVia` se queda con la que tiene todas las palabras con peso del
+  anuncio (sin artículos ni preposiciones, en castellano, catalán, gallego
+  y balear). «MIGUEL HERNANDEZ» encaja con «POETA MIGUEL HERNANDEZ»; «ABAD
+  SOLA» no encaja con «ABAT SOLA», aunque sea la misma calle, porque una
+  letra distinta en un apellido es también lo que separa dos calles. Entre
+  dos que encajan gana la exacta, y después la del mismo tipo de vía; si
+  siguen siendo dos, ninguna. Cada vía se resuelve una vez: la respuesta de
+  `ConsultaVia` se queda en la caché y el resto de bienes de esa calle no
+  la vuelven a pagar.
+- **Un portal con un solo inmueble se responde de otra forma.** Con varios
+  (un edificio de pisos) el Catastro devuelve la lista `lrcdnp`; con uno
+  solo (una casa) devuelve el inmueble entero en `bico`, sin lista. Hasta
+  el 27 de octubre de 2026 solo se leía la lista, y 46 de los 185 portales
+  que el Catastro había encontrado se daban por perdidos: eran la mayor
+  parte de los 57 bienes que tenían una respuesta correcta en la caché y
+  aun así estaban en `ninguna`.
 
 Cuando el Catastro devuelve varias referencias para un portal (los pisos de
 un edificio), se usa la primera: todas comparten parcela y coordenadas, que
@@ -406,13 +434,127 @@ diseminado y **PQ** a la parroquia (Asturias). Cuando el juzgado escribe ya
 en formato Catastro («PL J-1 P FLAMENCA NORTE 66 Es:28»), el código pasa
 tal cual.
 
+### Por qué 1.003 bienes se quedaban sin localizar
+
+El 27 de octubre de 2026, con la cadena ya enriqueciendo en producción, el
+reparto de los 2.618 bienes reales era 1.250 `catastral`, 222 `portal`, 143
+`municipio` y 1.003 `ninguna`: el 38 % sin un punto en el mapa. `npm run
+db:causas` (nuevo) clasifica cada uno de esos bienes en una sola causa,
+leyendo la referencia y la dirección del anuncio y lo que respondió el
+Catastro según `catastro_cache`, sin preguntarle nada. Primero la causa que
+no tiene arreglo aquí (catastro foral, sin dirección), después la referencia
+y por último la dirección. Esto es lo que salió, y a dónde fue cada grupo
+después de arreglar lo que era código y volver a enriquecerlos con `npm run
+db:reenriquecer` (también nuevo: regenera `bien_enriquecido` sin tocar el
+origen, que es lo que permite `CLAUDE.md`):
+
+| Causa (antes, todos en `ninguna`) | Bienes | `catastral` | `portal` | `municipio` | Siguen en `ninguna` |
+|---|---|---|---|---|---|
+| Dirección sin número de portal («C/ Nord, s/n», «Puerto del Angliru», «PARAJE CERRON EN MAHORA») | 334 | 0 | 0 | 322 | 12 |
+| Dirección con número y «la vía no existe» («Calle dels Sastres, 7», «calle burgos 66») | 199 | 0 | 77 | 122 | 0 |
+| Dirección con número y «el municipio no existe» («CREVILLENTE», «Santa Lucia», «VÉLEZ MÁLAGA») | 78 | 0 | 52 | 16 | 10 |
+| Dirección con número y «el número no existe» («Calle Alcobendas 1», Leganés) | 75 | 0 | 0 | 75 | 0 |
+| Referencia bien formada que el Catastro no conoce (mal copiada: 55 de una sola subasta de Lloret; 10 forales de Navarra) | 70 | 0 | 5 | 65 | 0 |
+| Catastro foral: País Vasco y Navarra | 59 | 0 | 0 | 59 | 0 |
+| Dirección con número que el Catastro sí resolvió: fallo nuestro (el `bico` de abajo y la caché sobrescrita) | 57 | 0 | 57 | 0 | 0 |
+| Dirección que no es una calle («PARCELA SEÑALADA CON EL NÚMERO 15 DEL PLANO…», «Manzana nº MR-02B») | 53 | 0 | 0 | 51 | 2 |
+| Referencia mal copiada (19 caracteres, «NOCONSTA») y dirección sin número | 41 | 0 | 0 | 41 | 0 |
+| Dirección con número y «ningún inmueble con los parámetros» | 25 | 0 | 0 | 25 | 0 |
+| Referencia o dirección aún sin consultar (bienes de la última pasada) | 7 | 1 | 1 | 5 | 0 |
+| Referencia mal copiada y dirección que no es una calle | 3 | 0 | 0 | 3 | 0 |
+| Otros («no hay cartografía disponible», nombre de vía de más de 25 caracteres) | 2 | 0 | 0 | 2 | 0 |
+| **Total** | **1.003** | **1** | **192** | **786** | **24** |
+
+Y la base entera, antes y después:
+
+| Precisión | 27/10 por la mañana | 27/10 por la noche |
+|---|---|---|
+| `catastral` | 1.250 | 1.251 |
+| `portal` | 222 | 454 |
+| `municipio` | 143 | 889 |
+| `ninguna` | 1.003 | 24 |
+| Sin enriquecer | 2 | 2 |
+
+Los `municipio` que ya existían (143) se volvieron a pasar también, por si
+el arreglo del `bico` o el de las vías les daba el portal: 41 lo
+consiguieron, y están en los 454. Lo que se arregló, por orden de lo que
+recuperó más:
+
+- **El centro del municipio no se aplicaba casi nunca.** La caída a
+  `municipio` existía, pero solo con la tabla de 51 ciudades de
+  `src/datos/municipios.ts`, y de los 351 municipios distintos de los 1.003
+  bienes ninguno estaba en ella. Ahora lo da CartoCiudad, del IGN («Dos
+  límites que conviene saber»): 786 bienes de 1.003 pasaron a `municipio`,
+  y con eso el mapa pinta algo, declarado como aproximado, para los que no
+  traen número, los de parcela o paraje, los forales, los de referencia mal
+  copiada y los de número que no existe. Para 230 municipios se tiene el
+  centro del núcleo urbano y para 27 solo el del término, que la ficha
+  distingue.
+- **Las vías y los municipios con otro nombre en el Catastro** se resuelven
+  con `ConsultaVia` y `ConsultaMunicipio` («Tres cosas del Catastro»): 129
+  bienes a `portal` que antes morían en «la vía no existe» o «el municipio
+  no existe». Los 122 que de ese grupo acabaron en `municipio` son calles
+  que el Catastro llama de otra manera sin compartir las palabras
+  («ABAD SOLA» / «ABAT SOLA», «BARCELON» / «BARCELONA», «MIGUEL HERNANDEZ»
+  cuando La Zubia no tiene ninguna vía con «HERNANDEZ»), y no se adivinan.
+- **El portal de un solo inmueble** (`bico`): 57 bienes a `portal` sin
+  pedirle nada nuevo al Catastro, porque la respuesta buena ya estaba en la
+  caché.
+- **El número escrito en letras** («número nueve-once», «número treinta y
+  seis») cuenta como número si va detrás de una marca de número, y la
+  segunda calle de una esquina («calle Torrentó y calle dels Horts») queda
+  fuera del nombre. Y una referencia dentro de una frase o dos referencias
+  en el mismo campo se sacan igual: es el `catastral` de la tabla (el
+  terreno de A Lama). Las 55 de Lloret no tenían arreglo: la referencia
+  copiada no existe y el número 9 de la calle Torrentó tampoco, así que
+  van al centro de Lloret.
+
+Lo que queda y por qué:
+
+- **24 en `ninguna`**, todos con el nombre del municipio mal escrito por el
+  juzgado («Vilagrasssa», «YINCOS», «ARGAMASILLA DE CLATRAVA», «Sant Felilu
+  de Guixols», «CIUENCA», «EL EJJIDO»): ni el Catastro ni el IGN los
+  conocen, y adivinar una errata es inventar. Un municipio mal escrito se
+  apunta en `municipio_centro` sin coordenadas y se le vuelve a preguntar a
+  los 180 días, por si el anuncio se corrige.
+- **786 en `municipio`** que la cola seguirá reintentando cada 30 días
+  (`v_bien_por_enriquecer`), aunque la mayoría no tiene más recorrido:
+  sin número de portal no hay portal que buscar.
+- **Tres direcciones** («PASEO DEL MORO MANCO, 1» en Mojácar, «CL LEONARDO
+  DA VINCI, 4» en Seseña y una más) con las que `Consulta_DNPLOC` agota
+  los 20 segundos de espera cada vez; el trabajo queda fallido con espera
+  creciente y la cola lo reintenta sola.
+- **La valoración no se mueve con esto**: `municipio` no trae superficie,
+  y el índice de zona sigue saliendo de la tabla de 51 ciudades. Los 192
+  bienes nuevos en `portal` sí traen superficie, y 90 de los 454 están
+  valorados.
+
 ### Dos límites que conviene saber
 
 **País Vasco y Navarra no están.** Mantienen sus propios catastros forales. Lo
 comprobamos: cinco puntos en Bilbao, Pamplona y San Sebastián devuelven «no hay
 referencia disponible», frente a tres y cuatro aciertos de cinco en Zaragoza y
 Castellón. Cubrir esas dos comunidades exige integraciones aparte con sus
-haciendas forales.
+haciendas forales. Sus referencias tienen además otro formato
+(«310000000002136475HF» en Navarra, «N0304621V» en Bizkaia) y el Catastro
+estatal las rechaza. Hasta que haya esas integraciones, sus bienes llegan
+como mucho a `municipio`: el centro del pueblo sí lo da el IGN.
+
+**El centro del municipio lo da CartoCiudad, del Instituto Geográfico
+Nacional.** Es el geocodificador público del Estado: sin clave ni registro,
+datos con licencia CC BY 4.0, y conoce los 8.000 municipios, forales
+incluidos. Hasta el 27 de octubre de 2026 el centro salía solo de la tabla
+de 51 ciudades de `src/datos/municipios.ts`, y de los 1.003 bienes reales
+sin localizar ninguno era de una de ellas: la caída a `municipio` existía
+en el código pero no se aplicaba casi nunca. `src/enriquecimiento/cartociudad.ts`
+le pide el centro del núcleo de población que lleva el nombre del municipio
+(donde está el ayuntamiento) y, si no lo tiene, el del término entero, que
+en un municipio grande cae lejos del pueblo (el de Jerez de la Frontera, a
+quince kilómetros); la ficha distingue las dos cosas en «cómo se obtuvo».
+Lo que responde se guarda en `municipio_centro` (migración `007`) y no se
+vuelve a preguntar: un pueblo no se mueve. Solo se le pide el municipio,
+nunca una dirección: el portal exacto sigue siendo cosa del Catastro, que
+es la fuente oficial de la parcela.
 
 **La valoración es provisional.** `src/enriquecimiento/valorar.ts` usa la tabla
 de referencia de `src/datos/municipios.ts`, que no es una fuente seria. Por eso
@@ -696,23 +838,17 @@ contando en `db:estado`, que por eso ahora desglosa por fuente.
   documentado (la ingesta ya corre sola; ver «La ingesta en producción»).
 - Conectar un modelo real al revisor y medir su acierto contra las reglas.
 - Índices de precios reales para la valoración, en lugar de la tabla provisional.
-- Catastros forales de País Vasco y Navarra.
-- El nombre del municipio en la consulta por dirección al Catastro. El
-  anuncio dice «MONOVAR», «ALICANTE», «SANTA LUCIA» o «JEREZ FRONTERA» y el
-  Catastro solo entiende «MONOVAR/MONOVER», «ALICANTE/ALACANT», «SANTA LUCIA
-  DE TIRAJANA» y «JEREZ DE LA FRONTERA»: en la medición del 26 de octubre
-  de 2026, 27 de unas 300 consultas por dirección murieron en «EL MUNICIPIO
-  NO EXISTE», 12 de ellas de Santa Lucía de Tirajana. Su `ConsultaMunicipio`
-  admite nombres parciales y devuelve el oficial; habría que resolverlo una
-  vez por municipio en `catastro.ts` y guardarlo en la caché.
-- Las 206 direcciones sin ningún dígito y las 93 con «s/n» no tienen
-  portal que buscar: su única mejora es la tabla de municipios de abajo,
-  para que al menos lleguen a `municipio` y no a `ninguna`.
-- Ampliar la tabla de municipios de `src/datos/municipios.ts` (o sustituirla
-  por el nomenclátor del INE con centroides): sin ella un pueblo que no está
-  no tiene ni centro para el mapa ni índice para la valoración. En la primera
-  pasada real, 24 de 28 bienes bien localizados se quedaron sin valoración
-  por esto y por ser suelo o rústica.
+- Catastros forales de País Vasco y Navarra: hoy sus bienes se quedan en el
+  centro del municipio («Por qué se quedaban sin localizar»).
+- Los nombres de vía que el Catastro escribe distinto en una letra («ABAD
+  SOLA» por «ABAT SOLA», «BARCELON» por «BARCELONA») no se resuelven a
+  propósito, porque una letra es también lo que separa dos calles. Si
+  algún día se quiere, es un cambio en `elegirVia` con una distancia de
+  edición, y habría que medir cuántos portales equivocados cuesta.
+- Un índice de precios por municipio: la tabla de `src/datos/municipios.ts`
+  sigue siendo lo único que da `precio_m2_zona`, y solo tiene 51 ciudades.
+  El centro del pueblo ya no depende de ella (lo da el IGN), la valoración
+  sí.
 - Alertas por correo y Telegram, incluidas las cancelaciones.
 - Favoritos, informe PDF y pagos.
 - Aviso legal, política de privacidad y revisión de RGPD.

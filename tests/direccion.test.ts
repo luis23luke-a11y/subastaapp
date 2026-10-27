@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  limpiarReferenciaCatastral, lugarCatastral, nombreSinArticulo, partirDireccion,
+  limpiarReferenciaCatastral, lugarCatastral, numeroEnLetras, partirDireccion,
 } from "../src/enriquecimiento/direccion";
 
 test("formas habituales de escribir una calle", () => {
@@ -183,14 +183,29 @@ test("lo que no sirve devuelve null en vez de inventarse algo", () => {
   assert.equal(partirDireccion("PISO 2º 1 DE LA CALLE DIAMANTE Nº 65 DE MADRID"), null);
 });
 
-test("el articulo inicial se puede quitar para el segundo intento", () => {
-  assert.equal(nombreSinArticulo("DE LA CONSTITUCION"), "CONSTITUCION");
-  assert.equal(nombreSinArticulo("DEL MAR"), "MAR");
-  assert.equal(nombreSinArticulo("DE LOS ARBOLES"), "ARBOLES");
-  assert.equal(nombreSinArticulo("D'OLOT"), "OLOT");
-  assert.equal(nombreSinArticulo("LA BRASA"), "BRASA");
-  assert.equal(nombreSinArticulo("MAYOR"), null);
-  assert.equal(nombreSinArticulo("DELICIAS"), null, "DEL solo si es palabra entera");
+test("el numero escrito con letras cuenta si va detras de una marca de numero", () => {
+  // 55 bienes de una misma subasta de Lloret de Mar (27 de octubre de 2026).
+  assert.deepEqual(partirDireccion("calle Torrentó y calle dels Horts, número nueve-once"), { sigla: "CL", nombre: "TORRENTO", numero: "9" });
+  assert.deepEqual(partirDireccion("Avenida de LA CONSTITUCIÓN número treinta y seis, puerta 2"), { sigla: "AV", nombre: "DE LA CONSTITUCION", numero: "36" });
+  assert.equal(partirDireccion("Calle Mayor nº dos")?.numero, "2");
+  assert.equal(partirDireccion("Calle Mayor número veintiuno, 3º")?.numero, "21");
+  // Sin la marca, las palabras son el nombre de la calle.
+  assert.deepEqual(partirDireccion("Calle Dos de Mayo 5"), { sigla: "CL", nombre: "DOS DE MAYO", numero: "5" });
+  assert.deepEqual(partirDireccion("Carrer Tres Forques"), { sigla: "CL", nombre: "TRES FORQUES", numero: null });
+  // Y una palabra que no es un numero se deja como esta.
+  assert.equal(partirDireccion("calle Torrentó, número nueveonce")?.numero, null);
+  assert.equal(numeroEnLetras("nueve"), 9);
+  assert.equal(numeroEnLetras("treinta y seis"), 36);
+  assert.equal(numeroEnLetras("veintiuno"), 21);
+  assert.equal(numeroEnLetras("cien"), 100);
+  assert.equal(numeroEnLetras("treinta y once"), null, "las decenas solo suman unidades");
+  assert.equal(numeroEnLetras("mayor"), null);
+});
+
+test("la segunda calle detras de 'y' o 'con' es la esquina y no entra en el nombre", () => {
+  assert.equal(partirDireccion("calle Torrentó y calle dels Horts, 9")?.nombre, "TORRENTO");
+  assert.equal(partirDireccion("Avenida del Mar con calle Sol, 4")?.nombre, "DEL MAR");
+  assert.equal(partirDireccion("Calle Mar i Cel 3")?.nombre, "MAR I CEL", "sin sigla detras no es una esquina");
 });
 
 test("provincia y municipio como los nombra el Catastro", () => {
@@ -221,6 +236,15 @@ test("se quitan puntos, barras, guiones y espacios", () => {
   assert.equal(limpiarReferenciaCatastral("1649914/DF3814H/0021/QO"), "1649914DF3814H0021QO");
   assert.equal(limpiarReferenciaCatastral("1712025-DD7811B-0007-L-Y"), "1712025DD7811B0007LY");
   assert.equal(limpiarReferenciaCatastral("0001010 YH9055N 0001 MH"), "0001010YH9055N0001MH");
+});
+
+test("una referencia dentro de una frase, o dos, se saca igual", () => {
+  // Formas reales del 27 de octubre de 2026.
+  assert.equal(limpiarReferenciaCatastral("la casa N06132200NG49B0001WF y del terreno: 360250000000500293ZK"), "N06132200NG49B0001WF");
+  assert.equal(limpiarReferenciaCatastral("002225200CG90D0001IY PARCELA:22"), "002225200CG90D0001IY");
+  assert.equal(limpiarReferenciaCatastral("1573507TP801780001KI referente al solar"), "1573507TP801780001KI");
+  assert.equal(limpiarReferenciaCatastral("0817000609036944727CF9754S0001HH"), "6944727CF9754S0001HH", "pegada a un numero de finca");
+  assert.equal(limpiarReferenciaCatastral("Parcela 353 del Polígono 3 del Catastro de Igúzquiza"), null);
 });
 
 test("lo que no es una referencia devuelve null en vez de preguntarle al Catastro", () => {

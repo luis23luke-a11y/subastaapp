@@ -274,14 +274,75 @@ export async function referenciasDeDireccion(opciones: {
     ["Bloque", ""], ["Escalera", ""], ["Planta", ""], ["Puerta", ""],
   ], clave);
 
+  // Dos formas de respuesta: con varios inmuebles en el portal (un edificio
+  // de pisos) viene la lista <lrcdnp><rcdnp><rc>; con uno solo (una casa
+  // unifamiliar) viene el inmueble entero en <bico><bi><idbi><rc>, sin
+  // lista. Hasta el 27 de octubre de 2026 solo se leia la lista y 46 de
+  // 185 portales encontrados se daban por perdidos.
   const lista = comoLista(
     buscar(arbol, "rcdnp") as Record<string, unknown>[] | Record<string, unknown> | undefined,
   );
-  return lista
+  const unico = buscar(arbol, "idbi") as Record<string, unknown> | undefined;
+  const referencias = [...lista, ...(unico ? [unico] : [])];
+  return referencias
     .map((u) => {
       const r = u["rc"] as Record<string, unknown> | undefined;
       if (!r) return null;
       return ["pc1", "pc2", "car", "cc1", "cc2"].map((k) => texto(r[k]) ?? "").join("");
     })
     .filter((v): v is string => v != null && v.length >= 14);
+}
+
+/** Codigos de error con los que el Catastro responde en Consulta_DNPLOC. */
+export const CODIGO_CATASTRO = {
+  provinciaNoExiste: "12",
+  municipioNoExiste: "22",
+  viaNoExiste: "33",
+  numeroNoExiste: "43",
+  ningunInmueble: "5",
+} as const;
+
+/** Los municipios de una provincia tal como los nombra el Catastro
+ *  ("CREVILLENT", "MONOVAR/MONOVER"). Una consulta por provincia, en cache. */
+export async function municipiosDeProvincia(provincia: string): Promise<string[]> {
+  const clave = provincia.toUpperCase();
+  let arbol: Record<string, unknown>;
+  try {
+    arbol = await llamar("callejero", "ConsultaMunicipio", [["Provincia", provincia], ["Municipio", ""]], clave);
+  } catch (err) {
+    // "No hay coincidencias" (cod 7) o una provincia que no conoce (las
+    // forales): lista vacia, no fallo.
+    if (err instanceof ErrorCatastro) return [];
+    throw err;
+  }
+  const lista = comoLista(buscar(arbol, "muni") as Record<string, unknown>[] | Record<string, unknown> | undefined);
+  return lista.map((m) => texto(m["nm"])).filter((v): v is string => v != null);
+}
+
+export interface ViaCatastro {
+  tv: string;
+  nv: string;
+}
+
+/** Las vias de un municipio cuyo nombre contiene `trozo`, con su tipo y su
+ *  nombre exacto ("SASTRES, DELS"), que es lo que quiere Consulta_DNPLOC. */
+export async function viasDeMunicipio(provincia: string, municipio: string, trozo: string): Promise<ViaCatastro[]> {
+  const clave = [provincia, municipio, trozo].map((v) => v.toUpperCase()).join("|");
+  let arbol: Record<string, unknown>;
+  try {
+    arbol = await llamar("callejero", "ConsultaVia",
+      [["Provincia", provincia], ["Municipio", municipio], ["TipoVia", ""], ["NombreVia", trozo]], clave);
+  } catch (err) {
+    if (err instanceof ErrorCatastro) return [];
+    throw err;
+  }
+  const lista = comoLista(buscar(arbol, "calle") as Record<string, unknown>[] | Record<string, unknown> | undefined);
+  return lista
+    .map((c) => {
+      const dir = c["dir"] as Record<string, unknown> | undefined;
+      const tv = dir ? texto(dir["tv"]) : null;
+      const nv = dir ? texto(dir["nv"]) : null;
+      return tv && nv ? { tv, nv } : null;
+    })
+    .filter((v): v is ViaCatastro => v != null);
 }

@@ -8,11 +8,12 @@
 // ---------------------------------------------------------------------------
 
 import {
-  coordenadasDeReferencia, datosDeReferencia, referenciasDeDireccion, ErrorCatastro,
+  CODIGO_CATASTRO, coordenadasDeReferencia, datosDeReferencia, municipiosDeProvincia,
+  referenciasDeDireccion, viasDeMunicipio, ErrorCatastro,
 } from "@/enriquecimiento/catastro";
-import {
-  limpiarReferenciaCatastral, lugarCatastral, nombreSinArticulo, partirDireccion,
-} from "@/enriquecimiento/direccion";
+import { centroDeMunicipio } from "@/enriquecimiento/cartociudad";
+import { elegirMunicipio, elegirVia, palabraClaveDeVia } from "@/enriquecimiento/coincidir";
+import { limpiarReferenciaCatastral, lugarCatastral, partirDireccion } from "@/enriquecimiento/direccion";
 import { MUNICIPIOS } from "@/datos/municipios";
 import type { PrecisionGeo } from "@/lib/tipos";
 
@@ -44,9 +45,6 @@ function esDatoAusente(err: unknown): boolean {
   return err instanceof ErrorCatastro;
 }
 
-/** Codigo con el que el Catastro responde "LA VÍA NO EXISTE" en Consulta_DNPLOC. */
-const VIA_NO_EXISTE = "33";
-
 export async function geocodificar(bien: {
   referenciaCatastral: string | null;
   direccion: string | null;
@@ -72,15 +70,28 @@ export async function geocodificar(bien: {
     if (resultado) return resultado;
   }
 
-  // 3. Centroide del municipio: sirve para el mapa, no para ir a verlo.
-  const muni = bien.municipio
-    ? PORNOMBRE.get(bien.municipio.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase())
-    : undefined;
-  if (muni) {
-    return {
-      ...VACIO, lat: muni.lat, lon: muni.lon, precision: "municipio",
-      comoSeObtuvo: `Centro de ${muni.nombre}: la dirección no permite más precisión`,
-    };
+  // 3. Centro del municipio: sirve para el mapa, no para ir a verlo. De la
+  //    tabla propia si la ciudad esta en ella, y si no, de CartoCiudad (IGN),
+  //    que conoce los 8.000 municipios y tambien los forales.
+  if (bien.municipio) {
+    const muni = PORNOMBRE.get(bien.municipio.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase());
+    if (muni) {
+      return {
+        ...VACIO, lat: muni.lat, lon: muni.lon, precision: "municipio",
+        comoSeObtuvo: `Centro de ${muni.nombre}: la dirección no permite más precisión`,
+      };
+    }
+    if (bien.provincia) {
+      const centro = await centroDeMunicipio(bien.municipio, bien.provincia);
+      if (centro) {
+        return {
+          ...VACIO, lat: centro.lat, lon: centro.lon, precision: "municipio",
+          comoSeObtuvo: centro.alcance === "poblacion"
+            ? `Centro de ${centro.nombre} según el IGN: la dirección no permite más precisión`
+            : `Centro del término municipal de ${centro.nombre} según el IGN: la dirección no permite más precisión`,
+        };
+      }
+    }
   }
 
   return VACIO;
@@ -88,11 +99,15 @@ export async function geocodificar(bien: {
 
 /**
  * Pregunta al Catastro por un portal. La provincia y el municipio van como
- * los nombra el Catastro ("Málaga" no existe para el; "MALAGA" si), y si
- * responde que la via no existe se prueba una segunda vez sin el articulo
- * inicial: guarda "DEL MAR" en Benalmadena pero "CONSTITUCION", sin "DE
- * LA", en Laguna de Duero, y no hay forma de saberlo sin preguntar. Las
- * dos consultas se quedan en la cache del Catastro.
+ * los nombra el Catastro ("Málaga" no existe para el; "MALAGA" si). Si
+ * responde que el municipio no existe, se busca el nombre oficial en su
+ * lista de municipios de la provincia ("CREVILLENTE" es "CREVILLENT"); si
+ * responde que la via no existe, se le pide la lista de vias con una palabra
+ * del nombre y se elige la que encaja ("DELS SASTRES" es "SASTRES, DELS").
+ * Cada cosa se resuelve una vez y, con la cache del Catastro, el resto de
+ * bienes del mismo municipio o la misma calle no vuelven a pagarla. Si el
+ * nombre no encaja con uno solo, no se adivina: se pasa al centro del
+ * municipio.
  */
 async function porDireccion(
   partida: { sigla: string; nombre: string; numero: string | null },
@@ -101,15 +116,18 @@ async function porDireccion(
 ): Promise<ResultadoGeo | null> {
   if (!partida.numero) return null;
   const lugar = lugarCatastral(provincia, municipio);
-  const nombres = [partida.nombre];
-  const corto = nombreSinArticulo(partida.nombre);
-  if (corto) nombres.push(corto);
+  let municipioCatastro = lugar.municipio;
+  let via = { tv: partida.sigla, nv: partida.nombre };
+  let municipioResuelto = false;
+  let viaResuelta = false;
 
-  for (const nombre of nombres) {
+  // Como mucho tres consultas: la primera, otra con el municipio oficial y
+  // otra con la via oficial.
+  for (let intento = 0; intento < 3; intento++) {
     try {
       const referencias = await referenciasDeDireccion({
-        provincia: lugar.provincia, municipio: lugar.municipio,
-        sigla: partida.sigla, calle: nombre, numero: partida.numero,
+        provincia: lugar.provincia, municipio: municipioCatastro,
+        sigla: via.tv, calle: via.nv, numero: partida.numero,
       });
       // Varias unidades en el mismo portal (los pisos de un edificio)
       // comparten parcela y coordenadas: basta la primera para situarlo.
@@ -121,13 +139,30 @@ async function porDireccion(
       const resultado = await porReferencia(primera);
       if (!resultado) return null;
       return { ...resultado, precision: "portal",
-        comoSeObtuvo: `Portal localizado en el Catastro: ${partida.sigla} ${nombre} ${partida.numero}` };
+        comoSeObtuvo: `Portal localizado en el Catastro: ${via.tv} ${via.nv} ${partida.numero}, ${municipioCatastro}` };
     } catch (err) {
-      if (!esDatoAusente(err)) throw err;
-      // Solo "la via no existe" justifica el segundo intento sin articulo;
-      // "el numero no existe" con el nombre bueno no lo arregla un nombre
-      // distinto.
-      if (!(err instanceof ErrorCatastro && err.codigo === VIA_NO_EXISTE)) return null;
+      if (!esDatoAusente(err) || !(err instanceof ErrorCatastro)) throw err;
+
+      if (err.codigo === CODIGO_CATASTRO.municipioNoExiste && !municipioResuelto) {
+        municipioResuelto = true;
+        const oficial = elegirMunicipio(lugar.municipio, await municipiosDeProvincia(lugar.provincia));
+        if (!oficial) return null;
+        municipioCatastro = oficial;
+        continue;
+      }
+      if (err.codigo === CODIGO_CATASTRO.viaNoExiste && !viaResuelta) {
+        viaResuelta = true;
+        const trozo = palabraClaveDeVia(partida.nombre);
+        if (!trozo) return null;
+        const oficial = elegirVia(partida, await viasDeMunicipio(lugar.provincia, municipioCatastro, trozo));
+        if (!oficial) return null;
+        via = oficial;
+        continue;
+      }
+      // "El numero no existe", "ningun inmueble", una provincia foral o un
+      // segundo fallo del mismo tipo: con el nombre bueno no hay mas que
+      // hacer aqui.
+      return null;
     }
   }
   return null;

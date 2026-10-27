@@ -15,7 +15,9 @@
     "ingesta": "node --env-file-if-exists=.env --import tsx src/ingesta/ejecutar.ts",
     "boe:seco": "node --env-file-if-exists=.env --import tsx scripts/boe-seco.ts",
     "acceso": "node --env-file-if-exists=.env --import tsx scripts/enlace.ts",
-    "db:estado": "node --env-file-if-exists=.env --import tsx scripts/comprobar.ts"
+    "db:estado": "node --env-file-if-exists=.env --import tsx scripts/comprobar.ts",
+    "db:causas": "node --env-file-if-exists=.env --import tsx scripts/causas-geo.ts",
+    "db:reenriquecer": "node --env-file-if-exists=.env --import tsx scripts/reenriquecer.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
