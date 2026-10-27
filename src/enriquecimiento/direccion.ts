@@ -132,6 +132,51 @@ function siglaDe(palabra: string): string | null {
  *  un digito, y solo si la n es una palabra entera: "Juan 5" no se toca. */
 const MARCA_NUMERO = /\b(?:n[uú]mero|n[uú]m|nro|n)\s*\.?\s*[ºª°]?\s*\.?\s*(?=\d)/gi;
 
+// El numero escrito con letras: "número nueve-once", "número treinta y seis",
+// "nº dos". Solo detras de una marca de numero, porque "Dos de Mayo" o "Tres
+// Forques" son nombres de calle. De 55 bienes de una misma subasta de Lloret
+// de Mar (27 de octubre de 2026) ninguno llegaba al Catastro por esto.
+const UNIDADES: Record<string, number> = {
+  un: 1, uno: 1, una: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7,
+  ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12, trece: 13, catorce: 14,
+  quince: 15, dieciseis: 16, diecisiete: 17, dieciocho: 18, diecinueve: 19,
+  veinte: 20, veintiun: 21, veintiuno: 21, veintiuna: 21, veintidos: 22,
+  veintitres: 23, veinticuatro: 24, veinticinco: 25, veintiseis: 26,
+  veintisiete: 27, veintiocho: 28, veintinueve: 29,
+};
+const DECENAS: Record<string, number> = {
+  treinta: 30, cuarenta: 40, cincuenta: 50, sesenta: 60, setenta: 70, ochenta: 80, noventa: 90,
+};
+
+/** "nueve" -> 9, "treinta y seis" -> 36, "cien" -> 100; null si no es un numero. */
+export function numeroEnLetras(texto: string): number | null {
+  const palabras = texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().split(/\s+/);
+  if (palabras.length === 1) {
+    const p = palabras[0]!;
+    if (p === "cien" || p === "ciento") return 100;
+    return UNIDADES[p] ?? DECENAS[p] ?? null;
+  }
+  if (palabras.length === 3 && palabras[1] === "y") {
+    const decena = DECENAS[palabras[0]!];
+    const unidad = UNIDADES[palabras[2]!];
+    if (decena != null && unidad != null && unidad < 10) return decena + unidad;
+  }
+  return null;
+}
+
+/** Marca de numero seguida de un numero en letras, con "y" opcional y un
+ *  segundo numero tras un guion ("nueve-once"). */
+const NUMERO_EN_LETRAS = /\b(n[uú]mero|n[uú]m\.?|nº|n\.º)\s+([a-zñ]+(?:\s+y\s+[a-zñ]+)?)(?:\s*-\s*([a-zñ]+(?:\s+y\s+[a-zñ]+)?))?(?=$|[\s,.;)])/gi;
+
+function numerosEnLetrasADigitos(texto: string): string {
+  return texto.replace(NUMERO_EN_LETRAS, (todo, marca: string, primero: string, segundo?: string) => {
+    const n1 = numeroEnLetras(primero);
+    if (n1 == null) return todo;
+    const n2 = segundo ? numeroEnLetras(segundo) : null;
+    return `${marca} ${n1}${n2 != null ? `-${n2}` : ""}`;
+  });
+}
+
 /** "s/n", "s.n.", "SN", "sin número", "sin num.". Todo lo que sigue sobra. */
 const SIN_NUMERO = /(?:^|[\s,.;(-])(?:s\/n|s\.n\.?|sn|s-n|sin\s+n[uú]m(?:ero)?\.?|sin\s+n[ºo°])(?=$|[\s,.;)\-])/i;
 
@@ -238,6 +283,7 @@ export function partirDireccion(entrada: string | null | undefined): DireccionPa
   // "C/SANABRIA", "AVDA.RONDA NORD", "Urb.Real Panorama": la sigla viene
   // pegada a la primera palabra del nombre.
   texto = texto.replace(/^c\/(?=\S)/i, "C/ ").replace(/^([a-zñç]+)\.(?=[a-zñç])/i, "$1. ");
+  texto = numerosEnLetrasADigitos(texto);
 
   // Un parentesis con mas de una letra dentro es un inciso ("(SUELO
   // URBANIZABLE DELIMITADO ULD 14)", "(hoy 121)", "(bloque 10)") y su numero
@@ -273,6 +319,9 @@ export function partirDireccion(entrada: string | null | undefined): DireccionPa
   let nombre = nombreTokens.join(" ");
   nombre = nombre.split(/\s*[,;()]\s*/)[0] ?? "";
   nombre = nombre.replace(/\s*-?\s*\b(?:con\s+)?(?:esquina|esq\.?)\b.*$/i, "");
+  // "Torrentó y calle dels Horts": la segunda calle, detras de "y", "i" o
+  // "con" y una sigla escrita, es la esquina. Se queda la primera.
+  nombre = nombre.replace(/\s+(?:y|i|con)\s+(?:c\/|calle|carrer|av\.?|avda\.?|avenida|avinguda|plaza|pl\.?|pza\.?|placa|paseo|passeig|camino|cami)\b.*$/i, "");
   // "de la Cruz. Espinardo": un punto seguido de espacio tambien separa el
   // paraje, salvo que lo que haya delante sea una abreviatura ("Dr. Fleming").
   const punto = /^(.*?\b([a-zñç]+))\.\s/i.exec(nombre);
@@ -286,16 +335,6 @@ export function partirDireccion(entrada: string | null | undefined): DireccionPa
   if (!nombre || (!conSigla && !/[A-ZÑÇ]/.test(nombre))) return null;
 
   return { sigla, nombre, numero };
-}
-
-/** Nombre sin el articulo inicial, o null si no lo tenia. Para el segundo
- *  intento cuando el Catastro dice que la via no existe. */
-export function nombreSinArticulo(nombre: string): string | null {
-  const corto = nombre
-    .replace(/^(?:DE\s+LA|DE\s+LOS|DE\s+LAS|DEL|DE|LA|EL|LOS|LAS)\s+/, "")
-    .replace(/^(?:DE\s+)?[DL]'\s*/, "")
-    .trim();
-  return corto && corto !== nombre ? corto : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -356,20 +395,45 @@ export function lugarCatastral(provincia: string, municipio: string): { provinci
 // texto que no es una referencia ("NOCONSTA", "Nocoordinada", "NO") o con un
 // caracter de menos, que no tiene arreglo. Preguntarle al Catastro por
 // "NOCONSTA" es una peticion perdida y un fallo que esconde el fallo real.
+//
+// Y algunas traen la referencia dentro de una frase, o dos referencias ("la
+// casa N06132200NG49B0001WF y del terreno: 360250000000500293ZK",
+// "002225200CG90D0001IY PARCELA:22"), o pegada a un numero de finca
+// ("0817000609036944727CF9754S0001HH"). Se busca primero por trozos y luego
+// por la forma de una referencia urbana dentro del texto.
 // ---------------------------------------------------------------------------
 
-/**
- * Deja una referencia catastral en los 14 (parcela) o 20 (inmueble)
- * caracteres que entiende el Catastro, o null si lo que hay no es una
- * referencia. No se toca el dato de origen: esto solo decide con que se
- * pregunta.
- */
-export function limpiarReferenciaCatastral(entrada: string | null | undefined): string | null {
-  if (!entrada) return null;
-  const limpia = entrada.toUpperCase().replace(/[^0-9A-Z]/g, "");
+/** 14 o 20 caracteres con digitos y letras mezclados, o null. */
+function referenciaValida(limpia: string): string | null {
   if (limpia.length !== 14 && limpia.length !== 20) return null;
   // Una referencia de verdad lleva digitos y letras mezclados; "NOCOORDINADO"
   // o un numero de finca registral no.
   if (!/\d/.test(limpia) || !/[A-Z]/.test(limpia)) return null;
   return limpia;
+}
+
+/** La forma de una referencia urbana: 7 cifras, 2 letras, 4 cifras, 1 letra,
+ *  4 cifras, 2 letras. La rustica (cifras y una letra al principio) no se busca
+ *  dentro de un texto porque se confunde con cualquier numero largo. */
+const REFERENCIA_URBANA = /\d{7}[A-Z]{2}\d{4}[A-Z]\d{4}[A-Z]{2}/;
+
+/**
+ * Deja una referencia catastral en los 14 (parcela) o 20 (inmueble)
+ * caracteres que entiende el Catastro, o null si lo que hay no es una
+ * referencia. Si el texto trae varias, la primera. No se toca el dato de
+ * origen: esto solo decide con que se pregunta.
+ */
+export function limpiarReferenciaCatastral(entrada: string | null | undefined): string | null {
+  if (!entrada) return null;
+  const mayusculas = entrada.toUpperCase();
+  const entera = referenciaValida(mayusculas.replace(/[^0-9A-Z]/g, ""));
+  if (entera) return entera;
+  // Por trozos: cada palabra, limpia de puntos, barras y guiones.
+  for (const trozo of mayusculas.split(/[\s,;:]+/)) {
+    const valida = referenciaValida(trozo.replace(/[^0-9A-Z]/g, ""));
+    if (valida) return valida;
+  }
+  // Dentro de un texto sin separar: solo la forma urbana, que es inconfundible.
+  const dentro = REFERENCIA_URBANA.exec(mayusculas.replace(/[^0-9A-Z]/g, ""));
+  return dentro ? dentro[0] : null;
 }
