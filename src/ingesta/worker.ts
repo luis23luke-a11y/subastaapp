@@ -16,10 +16,10 @@
 // ---------------------------------------------------------------------------
 
 import { crearLimitador } from "@/ingesta/limitador";
-import { intercalar, planificarRefresco, repartirLote } from "@/ingesta/planificador";
+import { esperaHastaVencimiento, intercalar, planificarRefresco, repartirLote } from "@/ingesta/planificador";
 import {
   abrirEjecucion, cerrarEjecucion, completar, devolver, encolar, encolarVarios,
-  estadoCola, fallar, guardarCrudo, pendientesPorTipo, rescatar, tomar, type Trabajo,
+  estadoCola, fallar, guardarCrudo, pendientesPorTipo, proximoVencimiento, rescatar, tomar, type Trabajo,
 } from "@/ingesta/cola";
 import { guardarSubasta, refrescarSubasta } from "@/ingesta/normalizar";
 import { encolarBienesPendientes, enriquecerBien } from "@/enriquecimiento/enriquecer";
@@ -99,7 +99,19 @@ export async function ejecutarWorker(
       const enriquecer = await tomar(adaptador.nombre, reparto.enriquecer, ["enriquecer"]);
       const urgentes = await tomar(adaptador.nombre, reparto.libres);
       const trabajos = intercalar(urgentes, nuevas, enriquecer);
-      if (trabajos.length === 0) break;
+      if (trabajos.length === 0) {
+        // Nada tomable ahora. Si algo vence antes del tope de la pasada, se
+        // espera a ello en vez de acabar: asi una pasada dura lo que dura su
+        // tope aunque la cola este al dia, y la cadena no encadena pasadas
+        // vacias cada dos minutos.
+        const espera = esperaHastaVencimiento(
+          await proximoVencimiento(adaptador.nombre), Date.now(), limite,
+        );
+        if (espera == null) break;
+        registrar(`  sin trabajo tomable; se espera ${Math.round(espera / 1000)}s al siguiente vencimiento`);
+        await new Promise((resolver) => setTimeout(resolver, espera));
+        continue;
+      }
 
       for (const trabajo of trabajos) {
         if (Date.now() >= limite) {

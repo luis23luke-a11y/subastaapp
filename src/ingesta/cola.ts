@@ -134,6 +134,17 @@ export async function tomar(fuente: string, cuantos: number, tipos?: TipoTrabajo
   );
 }
 
+/** Cuando vence el trabajo pendiente mas proximo que aun no se puede tomar,
+ *  o null si no hay ninguno programado para mas tarde. */
+export async function proximoVencimiento(fuente: string): Promise<Date | null> {
+  const fila = await unaFila<{ proximo: Date | null }>(
+    `select min(ejecutar_tras) as proximo from trabajo
+     where fuente = $1 and estado = 'pendiente' and ejecutar_tras > now()`,
+    [fuente],
+  );
+  return fila?.proximo ?? null;
+}
+
 /** Cuantos trabajos de cada tipo estan listos para tomarse ahora mismo. */
 export async function pendientesPorTipo(fuente: string): Promise<Partial<Record<TipoTrabajo, number>>> {
   const filas = await consultar<{ tipo: TipoTrabajo; n: number }>(
