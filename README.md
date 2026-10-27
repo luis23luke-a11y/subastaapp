@@ -128,6 +128,17 @@ original, que era la más antigua de la cola. Y un refresco que se reprogramaba
 chocaba con su propia fila y se quedaba con la fecha vieja, así que una subasta
 recién cerrada se miraba una vez en lugar de cada seis horas durante dos días.
 
+### Una pasada sin trabajo espera, no acaba
+
+Cuando no queda nada tomable pero hay trabajos programados para dentro de
+unos minutos (los refrescos se reprograman a sí mismos), la pasada espera
+a que venza el más próximo en vez de terminar, siempre dentro de su tope de
+tiempo (`esperaHastaVencimiento`, en `planificador.ts`). Con la cola al día,
+cada pasada terminaba en segundos y la cadena lanzaba otra a los dos minutos
+para no hacer nada: el 27 de octubre de 2026 hubo pasadas a las 17:00, 17:02,
+17:04 y 17:06 con cero o cinco trabajos. Ahora una pasada dura lo que dura su
+tope, haga mucho o poco, y la siguiente arranca cuando toca.
+
 ### Cómo se reparte una pasada
 
 Una pasada de catorce minutos no da para todo, y el orden en que se toma la

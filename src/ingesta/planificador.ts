@@ -93,6 +93,28 @@ export function esperaReintento(
   return Math.round(exponencial * (0.75 + ruido() * 0.5));
 }
 
+/**
+ * Cuanto debe esperar una pasada que se ha quedado sin trabajo tomable. Si
+ * hay un trabajo programado que vence antes de que se agote el tope de la
+ * pasada, se espera a el (con un margen por los relojes de la base y del
+ * runner); si no hay ninguno o vence despues del tope, null: la pasada acaba.
+ *
+ * Sin esto, con la cola al dia cada pasada terminaba en segundos y lanzaba la
+ * siguiente a los dos minutos para no hacer nada: medido el 27/10/2026,
+ * pasadas a las 17:00, 17:02, 17:04 y 17:06 con cero o cinco trabajos.
+ */
+export function esperaHastaVencimiento(
+  proximo: Date | null,
+  ahora: number,
+  limite: number,
+  margenMs = 2_000,
+): number | null {
+  if (!proximo) return null;
+  const hasta = proximo.getTime() + margenMs;
+  if (hasta >= limite) return null;
+  return Math.max(0, hasta - ahora);
+}
+
 /** Un error de red o un 5xx se reintenta; un 404 o un 403 no. */
 export function merecePena(error: unknown): boolean {
   const mensaje = error instanceof Error ? error.message : String(error);
