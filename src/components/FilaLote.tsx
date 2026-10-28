@@ -3,11 +3,10 @@ import { diasHasta, eur, m2, pct, plazoTexto } from "@/lib/formato";
 import { ETIQUETA_ESTADO, ETIQUETA_TIPO_BIEN, type LoteBusqueda } from "@/lib/tipos";
 
 // Una fila por lote, como la lista de empresas de Maqro ES: lo que decide si
-// merece abrir la ficha cabe en una linea y media. Al pulsarla, la ficha se
-// abre en un cajon a la derecha; `lista` lleva los ids de la pagina para que
-// el cajon pueda ir al anterior y al siguiente sin volver a la lista.
+// merece abrir la ficha cabe en una linea y media. Al pulsarla se abre la
+// pantalla del lote, con su mapa y toda su informacion.
 
-export default function FilaLote({ lote, lista }: { lote: LoteBusqueda; lista: string }) {
+export default function FilaLote({ lote }: { lote: LoteBusqueda }) {
   const dias = diasHasta(lote.fecha_fin);
   const cerrada = dias != null && dias < 0;
   const urgente = dias != null && dias >= 0 && dias <= 3;
@@ -26,7 +25,7 @@ export default function FilaLote({ lote, lista }: { lote: LoteBusqueda; lista: s
 
   return (
     <li className={`fila${urgente ? " urgente" : ""}${cerrada ? " cerrada" : ""}`}>
-      <Link href={`/lote/${lote.lote_id}?lista=${lista}`} className="fila-abre" scroll={false}>
+      <Link href={`/lote/${lote.lote_id}`} className="fila-abre">
         <span className="f-nom">
           {lote.bien_tipo ? ETIQUETA_TIPO_BIEN[lote.bien_tipo] : "Lote"} en {lote.municipio ?? "sin localizar"}
         </span>

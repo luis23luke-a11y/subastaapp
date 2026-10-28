@@ -80,7 +80,6 @@ src/ingesta/worker.ts     Descubrimiento, detalle y refresco
 src/ingesta/planificador.ts  Cada cuánto mirar cada cosa (puro, con pruebas)
 src/enriquecimiento/      Catastro, geocodificación, valoración y extracción
 src/app/(privado)/        Buscador y ficha, detrás de la puerta de acceso
-src/app/(privado)/@cajon  La ficha abierta en un cajón sobre el listado (ruta interceptada)
 src/app/globals.css       Tokens y clases del sistema visual (DESIGN.md)
 ```
 
@@ -876,14 +875,15 @@ de cada pieza en `DESIGN.md`; `PRODUCT.md` dice para quién es el producto.
 
 Tres cosas de cómo está montada:
 
-- **La ficha se abre en un cajón** sobre el listado, con anterior y siguiente,
-  sin perder los filtros ni la posición. Es una ruta interceptada de Next
-  (`src/app/(privado)/@cajon/(.)lote/[id]`): la dirección `/lote/123` es real,
-  y al recargarla o abrirla desde un correo se ve la página completa. Anterior
-  y siguiente sustituyen la entrada del historial en vez de apilar otra, para
-  que cerrar (volver atrás) lleve siempre al listado. En desarrollo, si tras
-  tocar estas rutas el enrutador suelta «initialTree is not iterable», es la
-  caché de `.next` mezclada con una build: borrarla y arrancar de nuevo.
+- **La ficha es una pantalla propia** (`/lote/[id]`), con el mapa de dónde
+  está el inmueble (`MapaLote`: con referencia catastral o portal exacto se
+  acerca a la manzana; con solo la calle o el municipio, el punto va en
+  naranja y con un halo, para no vender como exacto lo que no lo es), los
+  enlaces a la ficha oficial, a Google Maps y al Catastro, las cargas y la
+  posesión con su cita, los datos de la subasta y cada bien con la descripción
+  que publicó el juzgado. No lleva calculadora: se quitó a petición del dueño;
+  el motor de costes (`src/lib/costes.ts`) sigue ahí con sus pruebas por si
+  vuelve a hacer falta.
 - **Un solo formulario de filtros** (`id="filtros"`, en el panel lateral):
   la búsqueda, la provincia y el orden de la fila superior pertenecen a él por
   el atributo `form`, y los desplegables lo envían al cambiar.

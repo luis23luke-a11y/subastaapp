@@ -10,15 +10,9 @@ export const dynamic = "force-dynamic";
 
 // La puerta de acceso y el marco comun: cabecera fija translucida con la
 // marca, una linea de estado que dice cuantos lotes hay y de cuando son, y
-// el pie. `cajon` es la ranura donde se abre la ficha de un lote por encima
-// del listado (app/(privado)/@cajon).
+// el pie.
 
-export default async function LayoutPrivado({
-  children, cajon,
-}: {
-  children: React.ReactNode;
-  cajon: React.ReactNode;
-}) {
+export default async function LayoutPrivado({ children }: { children: React.ReactNode }) {
   const usuario = await usuarioActual();
   if (!usuario) redirect("/login");
   const resumen = await resumenCabecera();
@@ -55,7 +49,6 @@ export default async function LayoutPrivado({
       </header>
 
       <div className="flex-1">{children}</div>
-      {cajon}
 
       <footer className="foot">
         <div className="wrap">

@@ -33,7 +33,6 @@ export default async function Buscar({
   const enlacePagina = (pagina: number) => `/buscar?${aQuerystring({ ...filtro, pagina })}`;
   const desde = (filtro.pagina - 1) * POR_PAGINA + 1;
   const hasta = Math.min(filtro.pagina * POR_PAGINA, resultado.total);
-  const lista = resultado.filas.map((l) => l.lote_id).join(",");
   const hayFiltro = Boolean(filtro.q || filtro.provincia || filtro.tipo_bien?.length || filtro.precio_min != null
     || filtro.precio_max != null || filtro.m2_min != null || filtro.eur_m2_max != null || filtro.margen_min != null
     || filtro.situacion?.length || filtro.dias_max != null || filtro.sin_cargas || filtro.bbox);
@@ -85,7 +84,7 @@ export default async function Buscar({
           </div>
         ) : (
           <ol className="lista">
-            {resultado.filas.map((lote) => <FilaLote key={lote.lote_id} lote={lote} lista={lista} />)}
+            {resultado.filas.map((lote) => <FilaLote key={lote.lote_id} lote={lote} />)}
           </ol>
         )}
 

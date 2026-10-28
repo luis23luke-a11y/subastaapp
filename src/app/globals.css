@@ -266,35 +266,20 @@
   .ficha-enlaces .btn::after{content:" ↗";opacity:.5;font-weight:600}
   .ficha-nota{font-size:.88rem;color:var(--tinta-3);margin:12px 0 0;max-width:60ch}
 
-  /* ---------- cajon lateral con la ficha ---------- */
-  .velo{position:fixed;inset:0;z-index:40;border:0;padding:0;cursor:pointer;
-    background:rgba(10,10,11,.42);backdrop-filter:blur(2px);animation:aparece .18s var(--curva)}
-  .cajon{position:fixed;top:0;right:0;bottom:0;z-index:41;width:min(640px,100%);
-    background:var(--fondo-2);border-left:1px solid var(--linea);
-    box-shadow:-34px 0 70px -34px rgba(0,0,0,.55);display:flex;flex-direction:column;
-    animation:entra .22s var(--curva)}
-  body.quieto{overflow:hidden}
-  .cajon-top{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--linea);
-    background:var(--cristal-fuerte);flex:none}
-  .cajon-x{font:inherit;font-size:1.55rem;line-height:1;width:38px;height:38px;flex:none;cursor:pointer;
-    border:1px solid var(--linea-2);border-radius:50%;background:transparent;color:var(--tinta)}
-  .cajon-x:hover{border-color:var(--tinta);background:var(--fondo-3)}
-  .cajon-pos{font-size:.85rem;font-weight:600;color:var(--tinta-3);margin-right:auto;font-variant-numeric:tabular-nums}
-  .cajon-nav{display:flex;gap:6px;flex:none}
-  .cajon-nav .btn{min-width:38px;text-align:center}
-  .cajon-cuerpo{overflow-y:auto;overscroll-behavior:contain;padding:22px clamp(18px,4vw,28px) 44px;
-    -webkit-overflow-scrolling:touch}
-  .cajon .ficha-nom{margin-top:4px}
+  /* ---------- cada bien del lote, con su descripcion tal cual la publico el juzgado ---------- */
+  .bien{padding:18px 0 4px}
+  .bien + .bien{border-top:1px solid var(--linea);margin-top:10px}
+  .bien-tit{font-size:1.05rem;font-weight:800;letter-spacing:-.02em;margin:0 0 12px}
+  .bien-desc{margin:0;font-size:.95rem;line-height:1.6;color:var(--tinta-2);white-space:pre-line;
+    overflow-wrap:anywhere;max-width:72ch}
 
   .skel{height:72px;background:var(--fondo-2);border:1px solid var(--linea);border-radius:14px;
     animation:pulse 1.5s ease-in-out infinite}
 }
 
-@keyframes aparece{from{opacity:0}to{opacity:1}}
-@keyframes entra{from{transform:translateX(26px);opacity:.4}to{transform:none;opacity:1}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 @media (prefers-reduced-motion:reduce){
-  .velo,.cajon,.skel{animation:none}
+  .skel{animation:none}
   .btn:hover,.chip:hover{transform:none}
   .lateral{transition:none}
 }
@@ -314,7 +299,6 @@
 @media (max-width:700px){
   .state{flex:1 1 100%;margin:0;order:3}
   .top-acc{margin-left:0}
-  .cajon{width:100%;border-left:0}
   .datos.tres{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:640px){
