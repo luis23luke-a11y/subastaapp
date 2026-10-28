@@ -15,9 +15,11 @@ trabajar aquí y en qué punto está la cosa.
 Fase 1 terminada y en producción. Lo que funciona de punta a punta:
 
 - Esquema con PostGIS, cola de ingesta en Postgres, vista de búsqueda.
-- Acceso por enlace de un solo uso, buscador con filtros, mapa, ficha de lote
-  en un cajón sobre el listado. La interfaz es la de Maqro ES (`DESIGN.md`).
-- Calculadora de coste de adquisición y margen con ITP por comunidad.
+- Acceso por enlace de un solo uso, buscador con filtros, mapa, y la ficha de
+  cada lote en su propia pantalla con el mapa de dónde está. La interfaz es la
+  de Maqro ES (`DESIGN.md`).
+- Motor de coste de adquisición y margen con ITP por comunidad
+  (`src/lib/costes.ts`); la calculadora ya no se enseña en la ficha.
 - Cliente del Catastro probado contra el servicio real, cadena de geocodificación
   con precisión declarada, extractor de cargas con cita literal por campo.
 - Adaptador del Portal de Subastas del BOE (`src/ingesta/adaptadores/boe.ts`),

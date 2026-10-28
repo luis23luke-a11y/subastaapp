@@ -1,15 +1,14 @@
-import Calculadora from "@/components/Calculadora";
 import Evidencia from "@/components/Evidencia";
+import MapaLote from "@/components/MapaLote";
 import { eur, fecha, m2, pct, plazoTexto } from "@/lib/formato";
 import {
   ETIQUETA_ESTADO, ETIQUETA_PRECISION, ETIQUETA_SITUACION,
   ETIQUETA_TIPO_BIEN, ETIQUETA_TIPO_SUBASTA, type LoteBusqueda,
 } from "@/lib/tipos";
 
-// El contenido de la ficha de un lote, el mismo en el cajon y en la pagina
-// completa. Una sola columna, de arriba abajo: que es y cuanto vale, lo que
-// decide una puja (cargas y ocupacion, con su cita), la calculadora, los
-// datos de la subasta, los bienes y el historial.
+// La pantalla de un lote: que es y cuanto vale, donde esta (mapa), lo que
+// decide una puja (cargas y ocupacion, con su cita), los datos de la subasta,
+// cada bien con su descripcion tal como la publico el juzgado, y el historial.
 
 export interface Bien {
   id: number; tipo: string; descripcion: string | null; direccion: string | null;
@@ -22,6 +21,8 @@ export interface Instantanea {
   momento: string; estado: string | null; num_pujas: number | null; puja_actual: number | null;
 }
 
+const ETIQUETA_BIEN: Record<string, string> = ETIQUETA_TIPO_BIEN;
+
 export default function FichaLote({
   lote, bienes, historico,
 }: {
@@ -31,18 +32,21 @@ export default function FichaLote({
 }) {
   const tonoCargas = lote.cargas_subsisten == null ? "aviso" : lote.cargas_subsisten ? "malo" : "bueno";
   const tonoSituacion = lote.situacion === "ocupado" ? "malo" : lote.situacion === "libre" ? "bueno" : "aviso";
+  const localizado = lote.lat != null && lote.lon != null && lote.precision_geo !== "ninguna";
+  const refCatastral = lote.referencia_catastral ?? bienes.find((b) => b.referencia_catastral)?.referencia_catastral ?? null;
 
   return (
     <article>
       <p className="eyebrow" style={{ margin: 0 }}>
         {ETIQUETA_TIPO_SUBASTA[lote.tipo]} · {ETIQUETA_ESTADO[lote.estado]} · {plazoTexto(lote.fecha_fin)}
       </p>
-      <h2 className="ficha-nom">
+      <h1 className="ficha-nom">
         {lote.bien_tipo ? ETIQUETA_TIPO_BIEN[lote.bien_tipo] : "Lote"} en{" "}
         {lote.municipio ?? "ubicación sin determinar"}
-      </h2>
+      </h1>
       <p className="ficha-q">
         {lote.direccion ?? "Dirección no publicada"}
+        {lote.codigo_postal ? ` · ${lote.codigo_postal}` : ""}
         {lote.provincia ? ` · ${lote.provincia}` : ""}
         {" · "}<span className="cifra">{lote.id_externo}</span>
       </p>
@@ -69,24 +73,47 @@ export default function FichaLote({
           <span className="pill aviso">Cuota {pct(lote.cuota_propiedad)}</span>
         )}
         {lote.num_bienes > 1 && <span className="pill apagado">{lote.num_bienes} bienes</span>}
-        {lote.precision_geo && lote.precision_geo !== "catastral" && lote.precision_geo !== "portal" && (
-          <span className="pill apagado">{ETIQUETA_PRECISION[lote.precision_geo]}</span>
-        )}
       </div>
 
       <div className="ficha-enlaces">
         {lote.url && (
           <a href={lote.url} target="_blank" rel="noreferrer" className="btn small">Ficha oficial en el portal</a>
         )}
-        {lote.fuente === "boe" && (
-          <span className="cita">
-            Basado en datos de la{" "}
-            <a href="https://www.boe.es" target="_blank" rel="noreferrer">Agencia Estatal Boletín Oficial del Estado</a>
-          </span>
+        {localizado && (
+          <a href={`https://www.google.com/maps?q=${lote.lat},${lote.lon}`} target="_blank" rel="noreferrer" className="btn small">
+            Abrir en Google Maps
+          </a>
+        )}
+        {refCatastral && (
+          <a href={`https://www1.sedecatastro.gob.es/Cartografia/mapa.aspx?refcat=${encodeURIComponent(refCatastral)}`}
+             target="_blank" rel="noreferrer" className="btn small">
+            Ver en el Catastro
+          </a>
         )}
       </div>
 
-      <h3 className="ficha-h">Cargas y situación posesoria</h3>
+      <h2 className="ficha-h">Dónde está</h2>
+      {localizado ? (
+        <>
+          <div className="mapa-caja">
+            <MapaLote lat={lote.lat!} lon={lote.lon!} precision={lote.precision_geo} />
+          </div>
+          <p className="ficha-nota">
+            Precisión: {lote.precision_geo ? ETIQUETA_PRECISION[lote.precision_geo] : "sin determinar"}.
+            {lote.precision_geo === "municipio" && " El anuncio no da una dirección que se pueda situar: el punto marca el centro del municipio."}
+            {lote.precision_geo === "via" && " Se conoce la calle pero no el número: el punto es aproximado."}
+          </p>
+        </>
+      ) : (
+        <div className="aviso-caja" style={{ marginTop: 0 }}>
+          <p style={{ margin: 0 }}>
+            No se ha podido situar en el mapa: el anuncio no trae referencia catastral ni una dirección
+            que el Catastro reconozca.
+          </p>
+        </div>
+      )}
+
+      <h2 className="ficha-h">Cargas y situación posesoria</h2>
       <div>
         <Evidencia
           titulo="Cargas anteriores que subsisten"
@@ -124,73 +151,60 @@ export default function FichaLote({
         Verifica siempre con la nota simple del registro antes de pujar.
       </p>
 
-      <h3 className="ficha-h">Calculadora de coste y margen</h3>
-      <Calculadora
-        datos={{
-          valorSubasta: lote.valor_subasta ?? 0,
-          comunidad: lote.comunidad,
-          tipoSubasta: lote.tipo,
-          situacion: lote.situacion,
-          cargasSubsisten: lote.cargas_importe,
-          m2: lote.m2_construidos,
-          valorMercado: lote.valor_estimado,
-          cuotaPropiedad: lote.cuota_propiedad,
-        }}
-      />
-
-      <h3 className="ficha-h">Datos de la subasta</h3>
+      <h2 className="ficha-h">Datos de la subasta</h2>
       <dl className="datos">
         <div><dt>Valor de salida</dt><dd>{eur(lote.valor_subasta)}</dd></div>
         <div><dt>Tasación</dt><dd>{eur(lote.valor_tasacion)}</dd></div>
         <div><dt>Puja mínima</dt><dd>{eur(lote.puja_minima)}</dd></div>
-        <div><dt>Depósito</dt><dd>{eur(lote.deposito)}</dd></div>
+        <div><dt>Depósito para pujar</dt><dd>{eur(lote.deposito)}</dd></div>
         <div><dt>Cierra</dt><dd>{fecha(lote.fecha_fin)}</dd></div>
         <div><dt>Publicada</dt><dd>{fecha(lote.fecha_publicacion)}</dd></div>
+        <div><dt>Tipo</dt><dd>{ETIQUETA_TIPO_SUBASTA[lote.tipo]}</dd></div>
+        <div><dt>Estado</dt><dd>{ETIQUETA_ESTADO[lote.estado]}</dd></div>
         <div><dt>Procedimiento</dt><dd>{lote.procedimiento ?? "—"}</dd></div>
-        <div><dt>Autoridad</dt><dd>{lote.autoridad ?? "—"}</dd></div>
+        <div><dt>Autoridad gestora</dt><dd>{lote.autoridad ?? "—"}</dd></div>
       </dl>
 
-      <h3 className="ficha-h">Valoración y localización</h3>
+      <h2 className="ficha-h">Valoración</h2>
       <dl className="datos tres">
         <div><dt>Superficie</dt><dd>{m2(lote.m2_construidos)}</dd></div>
-        <div><dt>Año</dt><dd>{lote.anio_construccion ?? "—"}</dd></div>
+        <div><dt>Año de construcción</dt><dd>{lote.anio_construccion ?? "—"}</dd></div>
         <div><dt>€/m² de salida</dt><dd>{eur(lote.eur_m2_salida)}</dd></div>
         <div><dt>€/m² de zona</dt><dd>{eur(lote.precio_m2_zona)}</dd></div>
         <div><dt>Valor estimado</dt><dd>{eur(lote.valor_estimado)}</dd></div>
         <div><dt>Margen bruto</dt><dd>{pct(lote.margen_bruto)}</dd></div>
       </dl>
       <p className="ficha-nota">
-        Localización: {lote.precision_geo ? ETIQUETA_PRECISION[lote.precision_geo] : "sin determinar"}.
-        {lote.confianza_valor != null && ` Confianza de la valoración: ${pct(lote.confianza_valor)}.`}
-        {" "}La valoración es una estimación por zona, no una tasación.
+        {lote.confianza_valor != null && `Confianza de la valoración: ${pct(lote.confianza_valor)}. `}
+        La valoración es una estimación por zona, no una tasación. Al valor de salida hay que sumarle
+        el impuesto de transmisiones de la comunidad, las cargas que subsistan y, si está ocupado, el
+        coste de recuperar la posesión.
       </p>
 
-      <h3 className="ficha-h">Bienes del lote ({bienes.length})</h3>
-      <div className="scroll-x">
-        <table className="tabla">
-          <thead>
-            <tr>
-              <th>Tipo</th><th>Dirección</th><th>Ref. catastral</th>
-              <th className="num">Superficie</th><th className="num">Cuota</th>
-            </tr>
-          </thead>
-          <tbody>
-            {bienes.map((b) => (
-              <tr key={b.id}>
-                <td>{b.tipo}</td>
-                <td>{b.direccion ?? "—"}</td>
-                <td className="cifra" style={{ fontSize: ".82rem" }}>{b.referencia_catastral ?? "—"}</td>
-                <td className="num">{m2(b.m2_construidos)}</td>
-                <td className="num">{pct(b.cuota_propiedad)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <h2 className="ficha-h">{bienes.length === 1 ? "El inmueble" : `Los ${bienes.length} bienes del lote`}</h2>
+      {bienes.map((b, i) => (
+        <section key={b.id} className="bien">
+          {bienes.length > 1 && <h3 className="bien-tit">Bien {i + 1} · {ETIQUETA_BIEN[b.tipo] ?? b.tipo}</h3>}
+          <dl className="datos tres">
+            <div><dt>Tipo</dt><dd>{ETIQUETA_BIEN[b.tipo] ?? b.tipo}</dd></div>
+            <div><dt>Dirección</dt><dd>{b.direccion ?? "—"}</dd></div>
+            <div><dt>Municipio</dt><dd>{b.municipio ?? "—"}{b.provincia ? ` (${b.provincia})` : ""}</dd></div>
+            <div><dt>Referencia catastral</dt><dd className="cifra" style={{ fontSize: ".9rem" }}>{b.referencia_catastral ?? "—"}</dd></div>
+            <div><dt>Superficie</dt><dd>{m2(b.m2_construidos)}</dd></div>
+            <div><dt>Cuota que se subasta</dt><dd>{pct(b.cuota_propiedad)}</dd></div>
+          </dl>
+          {b.descripcion && (
+            <>
+              <p className="ev-tit" style={{ margin: "14px 0 6px" }}>Descripción publicada</p>
+              <p className="bien-desc">{b.descripcion}</p>
+            </>
+          )}
+        </section>
+      ))}
 
       {historico.length > 0 && (
         <>
-          <h3 className="ficha-h">Historial observado</h3>
+          <h2 className="ficha-h">Historial observado</h2>
           <ol className="tl">
             {historico.map((h, i) => (
               <li key={i} className={i === historico.length - 1 ? "hot" : ""}>
@@ -206,6 +220,13 @@ export default function FichaLote({
             ))}
           </ol>
         </>
+      )}
+
+      {lote.fuente === "boe" && (
+        <p className="cita" style={{ marginTop: 28 }}>
+          Basado en datos de la{" "}
+          <a href="https://www.boe.es" target="_blank" rel="noreferrer">Agencia Estatal Boletín Oficial del Estado</a>.
+        </p>
       )}
     </article>
   );

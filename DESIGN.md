@@ -50,12 +50,12 @@ gris del fondo.
   izquierda, etiquetas en el centro y precio y margen a la derecha. La fila con
   cierre en tres días o menos lleva un filo de acento a la izquierda; la cerrada
   va atenuada.
-- **Cajón** `.cajon`: la ficha del lote por encima del listado, con cerrar,
-  posición («3 de 24») y anterior y siguiente. Esc cierra, las flechas mueven.
-  Es una ruta interceptada de Next (`app/(privado)/@cajon/(.)lote/[id]`), así
-  que la dirección es real y al recargarla se ve la página completa.
-- **Ficha** `FichaLote`: una sola columna con cabeceras `.ficha-h`, evidencias
-  con su cita literal, calculadora, datos en `dl.datos`, tabla y línea de tiempo.
+- **Ficha** `FichaLote`: la pantalla de un lote, a página completa dentro de
+  un panel. Una sola columna con cabeceras `.ficha-h`: qué es y cuánto vale,
+  el mapa de dónde está (`MapaLote`, con halo naranja cuando la posición es
+  aproximada), evidencias con su cita literal, datos en `dl.datos`, cada bien
+  con la descripción que publicó el juzgado, y la línea de tiempo. Sin
+  calculadora: se quitó a petición del dueño.
 - **Chips**, **píldoras** y **etiquetas**: casillas con forma de píldora que se
   rellenan de tinta al marcarse; píldoras de estado en los tres tonos.
 
