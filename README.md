@@ -80,6 +80,8 @@ src/ingesta/worker.ts     Descubrimiento, detalle y refresco
 src/ingesta/planificador.ts  Cada cuánto mirar cada cosa (puro, con pruebas)
 src/enriquecimiento/      Catastro, geocodificación, valoración y extracción
 src/app/(privado)/        Buscador y ficha, detrás de la puerta de acceso
+src/app/(privado)/@cajon  La ficha abierta en un cajón sobre el listado (ruta interceptada)
+src/app/globals.css       Tokens y clases del sistema visual (DESIGN.md)
 ```
 
 ## El worker de ingesta
@@ -863,6 +865,30 @@ contando en `db:estado`, que por eso ahora desglosa por fuente.
 - Alertas por correo y Telegram, incluidas las cancelaciones.
 - Favoritos, informe PDF y pagos.
 - Aviso legal, política de privacidad y revisión de RGPD.
+
+## La interfaz
+
+Copia el sistema visual y la forma de usar de Maqro ES, la otra app de Gorex:
+fondo gris, paneles blancos de esquinas grandes, un solo acento monocromo,
+Figtree alojada en `public/fuentes/` y modo oscuro por preferencia del
+sistema. Los tokens y las clases están en `src/app/globals.css` y el porqué
+de cada pieza en `DESIGN.md`; `PRODUCT.md` dice para quién es el producto.
+
+Tres cosas de cómo está montada:
+
+- **La ficha se abre en un cajón** sobre el listado, con anterior y siguiente,
+  sin perder los filtros ni la posición. Es una ruta interceptada de Next
+  (`src/app/(privado)/@cajon/(.)lote/[id]`): la dirección `/lote/123` es real,
+  y al recargarla o abrirla desde un correo se ve la página completa. Anterior
+  y siguiente sustituyen la entrada del historial en vez de apilar otra, para
+  que cerrar (volver atrás) lleve siempre al listado. En desarrollo, si tras
+  tocar estas rutas el enrutador suelta «initialTree is not iterable», es la
+  caché de `.next` mezclada con una build: borrarla y arrancar de nuevo.
+- **Un solo formulario de filtros** (`id="filtros"`, en el panel lateral):
+  la búsqueda, la provincia y el orden de la fila superior pertenecen a él por
+  el atributo `form`, y los desplegables lo envían al cambiar.
+- **En pantalla estrecha** el panel lateral es un cajón que entra por la
+  izquierda con el botón «Filtros» de la cabecera.
 
 ## Avisos
 

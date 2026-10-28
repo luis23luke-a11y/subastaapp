@@ -1,7 +1,7 @@
-import CitaBOE from "@/components/CitaBOE";
-import Filtros from "@/components/Filtros";
+import FilaLote from "@/components/FilaLote";
+import Filtros, { ID_FORMULARIO } from "@/components/Filtros";
 import Mapa from "@/components/Mapa";
-import TarjetaLote from "@/components/TarjetaLote";
+import SelectAuto from "@/components/SelectAuto";
 import { buscarLotes, provincias, puntosLotes } from "@/lib/consultas";
 import { aQuerystring, leerFiltro, POR_PAGINA } from "@/lib/filtros";
 import { entero } from "@/lib/formato";
@@ -30,92 +30,77 @@ export default async function Buscar({
     provincias(),
   ]);
 
-  const enlaceOrden = (orden: string) =>
-    `/buscar?${aQuerystring({ ...filtro, orden: orden as never, pagina: 1 })}`;
-  const enlacePagina = (pagina: number) =>
-    `/buscar?${aQuerystring({ ...filtro, pagina })}`;
-
+  const enlacePagina = (pagina: number) => `/buscar?${aQuerystring({ ...filtro, pagina })}`;
   const desde = (filtro.pagina - 1) * POR_PAGINA + 1;
   const hasta = Math.min(filtro.pagina * POR_PAGINA, resultado.total);
+  const lista = resultado.filas.map((l) => l.lote_id).join(",");
+  const hayFiltro = Boolean(filtro.q || filtro.provincia || filtro.tipo_bien?.length || filtro.precio_min != null
+    || filtro.precio_max != null || filtro.m2_min != null || filtro.eur_m2_max != null || filtro.margen_min != null
+    || filtro.situacion?.length || filtro.dias_max != null || filtro.sin_cargas || filtro.bbox);
 
   return (
-    <main className="mx-auto grid max-w-[110rem] gap-4 px-4 py-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
-      <aside className="h-fit rounded-xl border border-linea bg-panel p-4 lg:sticky lg:top-16">
-        <Filtros filtro={filtro} provincias={provs} />
+    <div className="wrap cuerpo">
+      <aside className="lateral" id="lateral" aria-label="Filtros">
+        <Filtros filtro={filtro} />
       </aside>
 
-      <section className="flex min-w-0 flex-col gap-4">
-        <div className="h-[22rem] shrink-0">
+      <main className="principal">
+        <div className="mapa-caja">
           <Mapa puntos={puntos} bboxActual={filtro.bbox} />
         </div>
 
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <p className="text-sm">
-            {resultado.total === 0 ? (
-              "Ningún lote con estos filtros"
-            ) : (
-              <>
-                <span className="cifra font-medium">{entero(resultado.total)}</span>{" "}
-                {resultado.total === 1 ? "lote" : "lotes"}
-                <span className="text-apagado">
-                  {" "}· mostrando {desde}–{hasta}
-                </span>
-              </>
-            )}
-          </p>
-          <nav className="flex flex-wrap gap-1 text-xs">
-            {ORDENES.map(([valor, texto]) => (
-              <a
-                key={valor}
-                href={enlaceOrden(valor)}
-                className={`rounded-full border px-2.5 py-1 ${
-                  filtro.orden === valor
-                    ? "border-acento bg-acento text-white"
-                    : "border-linea text-apagado hover:text-texto"
-                }`}
-              >
-                {texto}
-              </a>
+        <div className="filtros">
+          <input type="search" name="q" form={ID_FORMULARIO} defaultValue={filtro.q ?? ""}
+                 placeholder="Municipio, calle o referencia…" aria-label="Buscar" />
+          <SelectAuto name="provincia" form={ID_FORMULARIO} defaultValue={filtro.provincia ?? ""} aria-label="Provincia">
+            <option value="">Toda España</option>
+            {provs.map((p) => (
+              <option key={p.provincia} value={p.provincia}>{p.provincia} ({entero(p.n)})</option>
             ))}
-          </nav>
+          </SelectAuto>
+          <label className="orden">
+            Ordenar
+            <SelectAuto name="orden" form={ID_FORMULARIO} defaultValue={filtro.orden} aria-label="Orden de la lista">
+              {ORDENES.map(([valor, texto]) => <option key={valor} value={valor}>{texto}</option>)}
+            </SelectAuto>
+          </label>
         </div>
 
+        <p className="cuenta">
+          {resultado.total === 0 ? "Ningún lote" : <>{entero(resultado.total)} {resultado.total === 1 ? "lote" : "lotes"}</>}
+          {resultado.total > 0 && (
+            <small>
+              mostrando {desde}–{hasta}
+              {filtro.bbox ? " · solo la zona del mapa" : ""}
+              {filtro.provincia ? ` · ${filtro.provincia}` : ""}
+            </small>
+          )}
+        </p>
+
         {resultado.total === 0 ? (
-          <div className="rounded-xl border border-dashed border-linea p-8 text-center text-sm text-apagado">
-            <p>Prueba a ensanchar el precio, quitar el filtro de margen o borrar la zona del mapa.</p>
-            <p className="mt-2">
-              Si la base está vacía, siembra los datos de muestra con{" "}
-              <code className="rounded bg-fondo px-1">npm run db:semilla</code>.
-            </p>
+          <div className="vacio">
+            <h3>Nada con estos filtros</h3>
+            <p>Prueba a ensanchar el precio, quitar el margen mínimo o borrar la zona del mapa.</p>
+            {hayFiltro && <p><a href="/buscar" className="btn">Quitar todos los filtros</a></p>}
           </div>
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {resultado.filas.map((lote) => (
-              <li key={lote.lote_id} className="contents">
-                <TarjetaLote lote={lote} />
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {resultado.filas.some((l) => l.fuente === "boe") && (
-          <CitaBOE className="text-center text-[11px] text-apagado" />
+          <ol className="lista">
+            {resultado.filas.map((lote) => <FilaLote key={lote.lote_id} lote={lote} lista={lista} />)}
+          </ol>
         )}
 
         {resultado.paginas > 1 && (
-          <nav className="flex items-center justify-center gap-3 py-2 text-sm">
-            {filtro.pagina > 1 && (
-              <a href={enlacePagina(filtro.pagina - 1)} className="text-acento underline">Anterior</a>
-            )}
-            <span className="cifra text-apagado">
-              Página {filtro.pagina} de {resultado.paginas}
-            </span>
-            {filtro.pagina < resultado.paginas && (
-              <a href={enlacePagina(filtro.pagina + 1)} className="text-acento underline">Siguiente</a>
-            )}
+          <nav className="paginas" aria-label="Páginas">
+            {filtro.pagina > 1
+              ? <a href={enlacePagina(filtro.pagina - 1)} className="btn small">‹ Anterior</a>
+              : <span className="btn small" aria-disabled="true">‹ Anterior</span>}
+            <span className="cifra">Página {filtro.pagina} de {entero(resultado.paginas)}</span>
+            {filtro.pagina < resultado.paginas
+              ? <a href={enlacePagina(filtro.pagina + 1)} className="btn small">Siguiente ›</a>
+              : <span className="btn small" aria-disabled="true">Siguiente ›</span>}
           </nav>
         )}
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }

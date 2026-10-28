@@ -38,3 +38,17 @@ export function plazoTexto(v: string | Date | null | undefined): string {
   if (d === 1) return "Cierra mañana";
   return `Cierra en ${d} días`;
 }
+
+/** "hace 12 min", "hace 3 h", "ayer", o la fecha si es mas antigua. */
+export function hace(v: string | Date | null | undefined): string {
+  if (!v) return "—";
+  const d = typeof v === "string" ? new Date(v) : v;
+  if (Number.isNaN(d.getTime())) return "—";
+  const min = Math.round((Date.now() - d.getTime()) / 60_000);
+  if (min < 1) return "ahora mismo";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  if (h < 48) return "ayer";
+  return fecha(d);
+}

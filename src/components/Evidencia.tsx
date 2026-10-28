@@ -14,34 +14,26 @@ export default function Evidencia({
   confianza: number | null;
   origen: string | null;
 }) {
-  const color = {
-    neutro: "text-texto", bueno: "text-bueno", aviso: "text-aviso", malo: "text-malo",
-  }[tono];
-
   const fiabilidad = confianza == null || confianza === 0
-    ? { texto: "sin respaldo en el texto", clase: "text-malo" }
+    ? { texto: "sin respaldo en el texto", clase: "malo" }
     : confianza >= 0.85
-      ? { texto: `respaldo alto · ${pct(confianza)}`, clase: "text-bueno" }
+      ? { texto: `respaldo alto · ${pct(confianza)}`, clase: "bueno" }
       : confianza >= 0.6
-        ? { texto: `respaldo medio · ${pct(confianza)}`, clase: "text-aviso" }
-        : { texto: `respaldo bajo · ${pct(confianza)}`, clase: "text-malo" };
+        ? { texto: `respaldo medio · ${pct(confianza)}`, clase: "aviso" }
+        : { texto: `respaldo bajo · ${pct(confianza)}`, clase: "malo" };
 
   return (
-    <div className="flex flex-col gap-1.5 border-t border-linea py-3 first:border-t-0 first:pt-0">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="text-xs text-apagado">{titulo}</span>
-        <span className={`text-sm font-medium ${color}`}>{valor}</span>
+    <div className="evidencia">
+      <div className="ev-cab">
+        <span className="ev-tit">{titulo}</span>
+        <span className={`ev-val ${tono === "neutro" ? "" : tono}`}>{valor}</span>
       </div>
       {cita ? (
-        <blockquote className="border-l-2 border-linea pl-3 text-xs italic leading-relaxed text-apagado">
-          “{cita}”
-        </blockquote>
+        <blockquote className="ev-cita">“{cita}”</blockquote>
       ) : (
-        <p className="text-xs text-apagado">
-          El anuncio no dice nada de esto. No es que no lo haya: es que no consta.
-        </p>
+        <p className="ev-pie">El anuncio no dice nada de esto. No es que no lo haya: es que no consta.</p>
       )}
-      <p className="text-[11px] text-apagado">
+      <p className="ev-pie">
         <span className={fiabilidad.clase}>{fiabilidad.texto}</span>
         {origen === "modelo" ? " · revisado con modelo de lenguaje" : origen ? " · extraído por reglas" : ""}
       </p>

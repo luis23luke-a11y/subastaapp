@@ -66,8 +66,8 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
       m.addLayer({
         id: "grupos", type: "circle", source: "lotes", filter: ["has", "point_count"],
         paint: {
-          "circle-color": "#20567a",
-          "circle-opacity": 0.85,
+          "circle-color": "#111113",
+          "circle-opacity": 0.88,
           "circle-radius": ["step", ["get", "point_count"], 14, 10, 19, 50, 25],
         },
       });
@@ -84,7 +84,7 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
         id: "puntos", type: "circle", source: "lotes", filter: ["!", ["has", "point_count"]],
         paint: {
           "circle-radius": 6,
-          "circle-color": ["case", ["==", ["get", "aproximado"], true], "#a16207", "#20567a"],
+          "circle-color": ["case", ["==", ["get", "aproximado"], true], "#ED4D03", "#111113"],
           "circle-stroke-width": 1.5,
           "circle-stroke-color": "#ffffff",
         },
@@ -110,7 +110,7 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
             `<div style="font:13px/1.4 system-ui">
                <strong>${String(props.municipio ?? "Sin localizar")}</strong><br>
                ${precio}${props.aproximado ? " · ubicación aproximada" : ""}<br>
-               <a href="/lote/${String(props.lote_id)}" style="color:#20567a">Ver ficha</a>
+               <a href="/lote/${String(props.lote_id)}" style="color:inherit;font-weight:700">Ver ficha</a>
              </div>`,
           )
           .addTo(m);
@@ -179,20 +179,20 @@ export default function Mapa({ puntos, bboxActual }: { puntos: Punto[]; bboxActu
   };
 
   return (
-    <div className="relative h-[22rem] w-full overflow-hidden rounded-xl border border-linea">
+    <div className="relative h-full w-full">
       {/* El CSS de MapLibre impone position:relative a este elemento, asi que
           no se puede posicionar con inset-0: se quedaria sin altura. */}
       <div ref={contenedor} className="h-full w-full" />
       <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-2">
-        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-linea bg-panel/95 px-3 py-1.5 text-xs shadow-sm">
-          <span className="text-apagado">
+        <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-linea2 bg-fondo2 px-3.5 py-1.5 text-xs font-semibold shadow-panel">
+          <span className="text-tinta3">
             {puntos.length} {puntos.length === 1 ? "lote localizado" : "lotes localizados"}
           </span>
-          <button onClick={enlaceZona} className="font-medium text-acento underline disabled:opacity-40" disabled={!encuadre}>
+          <button onClick={enlaceZona} className="font-bold text-tinta underline underline-offset-2 disabled:opacity-40" disabled={!encuadre}>
             Buscar en esta zona
           </button>
           {bboxActual && (
-            <a href={quitarBbox()} className="text-apagado underline">quitar zona</a>
+            <a href={quitarBbox()} className="text-tinta3 underline underline-offset-2">quitar zona</a>
           )}
         </div>
       </div>

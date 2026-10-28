@@ -15,13 +15,14 @@ trabajar aquí y en qué punto está la cosa.
 Fase 1 terminada y en producción. Lo que funciona de punta a punta:
 
 - Esquema con PostGIS, cola de ingesta en Postgres, vista de búsqueda.
-- Acceso por enlace de un solo uso, buscador con filtros, mapa, ficha de lote.
+- Acceso por enlace de un solo uso, buscador con filtros, mapa, ficha de lote
+  en un cajón sobre el listado. La interfaz es la de Maqro ES (`DESIGN.md`).
 - Calculadora de coste de adquisición y margen con ITP por comunidad.
 - Cliente del Catastro probado contra el servicio real, cadena de geocodificación
   con precisión declarada, extractor de cargas con cita literal por campo.
 - Adaptador del Portal de Subastas del BOE (`src/ingesta/adaptadores/boe.ts`),
   que lee el portal sin sesión y despacio, probado sobre páginas reales.
-- 101 pruebas (`npm test`, `node --test`, sin dependencias de testing).
+- 134 pruebas (`npm test`, `node --test`, sin dependencias de testing).
 
 - Ingesta real en producción desde un cron de GitHub Actions
   (`.github/workflows/ingesta-boe.yml`, cada 15 minutos, tope de 14 minutos
@@ -122,6 +123,10 @@ activo que no se puede recuperar a posteriori.
 boletín en `subasta` / `lote` / `bien`; lo que calculamos nosotros en
 `bien_enriquecido`. Cambiar el modelo de valoración debe ser borrar esa tabla y
 recalcular, sin tocar el origen.
+
+**El estilo vive en `src/app/globals.css` y se explica en `DESIGN.md`.** Los
+colores son tokens; Tailwind solo los mapea. Nada de colores sueltos en los
+componentes, ni bordes gruesos de color a un lado, ni degradados.
 
 **Las migraciones son ficheros numerados en `db/` y son idempotentes.** Para
 cambiar el esquema se añade una migración nueva; no se edita una existente, ni se
