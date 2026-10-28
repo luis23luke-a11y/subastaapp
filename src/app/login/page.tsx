@@ -1,3 +1,4 @@
+import Marca from "@/components/Marca";
 import { crearTokenAcceso } from "@/lib/auth";
 import { enviarCorreo } from "@/lib/correo";
 
@@ -21,6 +22,9 @@ async function pedirAcceso(datos: FormData) {
   }
 }
 
+// La puerta: el mismo panel de acceso que Maqro ES, con el correo en vez de
+// una clave. Quien no esta invitado recibe exactamente la misma pantalla.
+
 export default async function Login({
   searchParams,
 }: {
@@ -29,41 +33,59 @@ export default async function Login({
   const { enviado, error } = await searchParams;
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-12">
-      <div className="rounded-xl border border-linea bg-panel p-6 shadow-sm">
-        <h1 className="text-xl font-medium">Acceso</h1>
-        <p className="mt-2 text-sm text-apagado">
-          Herramienta de uso interno. El acceso es por invitación: si tu correo está
-          dado de alta, recibirás un enlace de un solo uso.
-        </p>
+    <>
+      <header className="top">
+        <div className="wrap">
+          <span className="brand">
+            <Marca />
+            <span className="brand-txt">
+              Subastas
+              <small>Inmuebles del Portal de Subastas del BOE</small>
+            </span>
+          </span>
+        </div>
+      </header>
 
-        {enviado ? (
-          <p className="mt-6 rounded-lg border border-linea bg-fondo p-4 text-sm">
-            Si ese correo está dado de alta, el enlace ya está en camino. Caduca en 20 minutos.
-          </p>
-        ) : (
-          <form action={pedirAcceso} className="mt-6 flex flex-col gap-3">
-            <label className="text-sm font-medium" htmlFor="email">Correo electrónico</label>
-            <input
-              id="email" name="email" type="email" required autoComplete="email"
-              placeholder="tu@correo.es"
-              className="rounded-lg border border-linea bg-fondo px-3 py-2 text-sm outline-none focus:border-acento focus:ring-1 focus:ring-acento"
-            />
-            <button
-              type="submit"
-              className="rounded-lg bg-acento px-3 py-2 text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-acento focus:ring-offset-2"
-            >
-              Enviar enlace de acceso
-            </button>
-          </form>
-        )}
+      <main className="wrap" style={{ maxWidth: 760 }}>
+        <div className="panel" style={{ marginBlock: 28 }}>
+          <div className="panel-in">
+            <p className="eyebrow">Acceso</p>
+            <h1 className="sec">Escribe tu correo</h1>
+            <p className="lede">
+              Es una herramienta de uso privado, por invitación. Si tu correo está dado de alta
+              te mandamos un enlace de un solo uso que vale 20 minutos.
+            </p>
 
-        {error === "token" && (
-          <p className="mt-4 text-sm text-malo">
-            Ese enlace ya se ha usado o ha caducado. Pide uno nuevo.
-          </p>
-        )}
-      </div>
-    </main>
+            {enviado ? (
+              <div className="aviso-caja" style={{ marginTop: 0 }}>
+                <p style={{ margin: 0 }}>
+                  Si ese correo está dado de alta, el enlace ya está en camino. Caduca en 20 minutos.
+                </p>
+              </div>
+            ) : (
+              <form action={pedirAcceso}>
+                <div className="field">
+                  <label htmlFor="email">Correo electrónico</label>
+                  <input id="email" name="email" type="email" required autoComplete="email"
+                         placeholder="tu@correo.es" autoFocus />
+                </div>
+                <div className="actions">
+                  <button type="submit" className="btn primary">Enviar el enlace</button>
+                  {error === "token" && (
+                    <span className="nota mala">Ese enlace ya se ha usado o ha caducado. Pide uno nuevo.</span>
+                  )}
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <footer className="foot">
+        <div className="wrap">
+          <p>Datos orientativos procedentes de fuentes públicas. No es asesoramiento jurídico ni fiscal.</p>
+        </div>
+      </footer>
+    </>
   );
 }

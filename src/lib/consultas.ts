@@ -95,3 +95,13 @@ export async function provincias() {
      where provincia is not null group by provincia order by provincia`,
   );
 }
+
+/** Lo que dice la cabecera: cuantos lotes ve el buscador y de cuando es la
+ *  ultima visita al origen. */
+export async function resumenCabecera() {
+  const fila = await unaFila<{ lotes: number; actualizado: string | null }>(
+    `select (select count(*)::int from v_lote_busqueda) as lotes,
+            (select max(visto_ultima_vez) from subasta) as actualizado`,
+  );
+  return { lotes: fila?.lotes ?? 0, actualizado: fila?.actualizado ?? null };
+}

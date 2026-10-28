@@ -16,8 +16,14 @@ export interface DatosCalculadora {
   cuotaPropiedad: number | null;
 }
 
-const campo =
-  "w-full rounded-lg border border-linea bg-fondo px-2.5 py-1.5 text-sm outline-none focus:border-acento focus:ring-1 focus:ring-acento";
+function Campo({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-col gap-2">
+      <span className="flabel" style={{ marginBottom: 0 }}>{etiqueta}</span>
+      {children}
+    </label>
+  );
+}
 
 export default function Calculadora({ datos }: { datos: DatosCalculadora }) {
   const [puja, setPuja] = useState(datos.valorSubasta);
@@ -43,92 +49,84 @@ export default function Calculadora({ datos }: { datos: DatosCalculadora }) {
   );
 
   const tonoMargen =
-    resultado.margenPct == null ? "text-apagado"
+    resultado.margenPct == null ? "text-tinta3"
       : resultado.margenPct >= 0.2 ? "text-bueno"
       : resultado.margenPct >= 0 ? "text-aviso"
       : "text-malo";
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-apagado">
-          Tu puja
-          <input type="number" min={0} step={500} value={puja} className={campo}
+        <Campo etiqueta="Tu puja">
+          <input type="number" min={0} step={500} value={puja} inputMode="numeric"
                  onChange={(e) => setPuja(Number(e.target.value))} />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-apagado">
-          Valor de mercado
-          <input type="number" min={0} step={1000} value={valorMercado} className={campo}
+        </Campo>
+        <Campo etiqueta="Valor de mercado">
+          <input type="number" min={0} step={1000} value={valorMercado} inputMode="numeric"
                  onChange={(e) => setValorMercado(Number(e.target.value))} />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-apagado">
-          Reforma por m²
-          <input type="number" min={0} step={25} value={reformaPorM2} className={campo}
+        </Campo>
+        <Campo etiqueta="Reforma por m²">
+          <input type="number" min={0} step={25} value={reformaPorM2} inputMode="numeric"
                  onChange={(e) => setReforma(Number(e.target.value))} />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-apagado">
-          Coste de desalojo
-          <input type="number" min={0} step={500} value={costeDesalojo} className={campo}
+        </Campo>
+        <Campo etiqueta="Coste de desalojo">
+          <input type="number" min={0} step={500} value={costeDesalojo} inputMode="numeric"
                  onChange={(e) => setDesalojo(Number(e.target.value))} />
-        </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-apagado sm:col-span-2">
-          Comisión de venta si revendes ({comisionVenta}%)
-          <input type="range" min={0} max={6} step={0.5} value={comisionVenta}
-                 onChange={(e) => setComision(Number(e.target.value))} />
-        </label>
+        </Campo>
+        <div className="sm:col-span-2">
+          <Campo etiqueta={`Comisión de venta si revendes (${comisionVenta} %)`}>
+            <input type="range" min={0} max={6} step={0.5} value={comisionVenta}
+                   onChange={(e) => setComision(Number(e.target.value))} />
+          </Campo>
+        </div>
       </div>
 
-      <table className="w-full text-sm">
+      <table className="tabla">
         <tbody>
           {resultado.partidas.map((p) => (
-            <tr key={p.concepto} className="border-b border-linea">
-              <td className="py-1.5 pr-2">
+            <tr key={p.concepto}>
+              <td>
                 {p.concepto}
-                {p.estimado && <span className="ml-1 text-[11px] text-apagado">estimado</span>}
-                {p.nota && <p className="text-[11px] text-apagado">{p.nota}</p>}
+                {p.estimado && <span className="ml-2 text-xs text-tinta3">estimado</span>}
+                {p.nota && <p className="m-0 text-xs text-tinta3">{p.nota}</p>}
               </td>
-              <td className="cifra py-1.5 text-right tabular-nums">{eur(p.importe)}</td>
+              <td className="num">{eur(p.importe)}</td>
             </tr>
           ))}
-          <tr className="border-b-2 border-linea font-medium">
-            <td className="py-2">Coste total de adquisición</td>
-            <td className="cifra py-2 text-right">{eur(resultado.costeTotal)}</td>
+          <tr className="total">
+            <td>Coste total de adquisición</td>
+            <td className="num">{eur(resultado.costeTotal)}</td>
           </tr>
           <tr>
-            <td className="py-2">
+            <td>
               Margen sobre el valor de mercado
               {resultado.valorMercadoAjustado != null &&
                 resultado.valorMercadoAjustado !== resultado.valorMercado && (
-                  <p className="text-[11px] text-apagado">
+                  <p className="m-0 text-xs text-tinta3">
                     Ajustado a la cuota de propiedad: {eur(resultado.valorMercadoAjustado)}
                   </p>
                 )}
             </td>
-            <td className={`cifra py-2 text-right font-medium ${tonoMargen}`}>
+            <td className={`num font-extrabold ${tonoMargen}`}>
               {eur(resultado.margen)} {resultado.margenPct != null && `(${pct(resultado.margenPct)})`}
             </td>
           </tr>
           <tr>
-            <td className="py-1.5 text-apagado">Depósito para poder pujar</td>
-            <td className="cifra py-1.5 text-right">{eur(resultado.deposito)}</td>
+            <td className="text-tinta3">Depósito para poder pujar</td>
+            <td className="num">{eur(resultado.deposito)}</td>
           </tr>
         </tbody>
       </table>
 
-      <p className="text-xs text-apagado">{resultado.reglas.nota}</p>
+      <p className="ficha-nota" style={{ marginTop: 0 }}>{resultado.reglas.nota}</p>
 
       {resultado.avisos.length > 0 && (
-        <ul className="flex flex-col gap-1.5 rounded-lg border border-aviso/30 bg-aviso/5 p-3 text-xs">
-          {resultado.avisos.map((a) => (
-            <li key={a} className="flex gap-2">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-aviso" />
-              <span>{a}</span>
-            </li>
-          ))}
+        <ul className="aviso-caja" style={{ marginTop: 0 }}>
+          {resultado.avisos.map((a) => <li key={a}><span>{a}</span></li>)}
         </ul>
       )}
 
-      <p className="text-[11px] text-apagado">
+      <p className="ficha-nota" style={{ marginTop: 0 }}>
         Cálculo orientativo con supuestos editables. No es asesoramiento jurídico ni fiscal:
         verifica el ITP, las cargas y la situación posesoria antes de pujar.
       </p>
